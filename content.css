@@ -1,0 +1,151 @@
+/* === FAB (плавающая кнопка) === */
+#ymd-fab {
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  z-index: 999999;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #ffdb4d 0%, #f0c000 100%);
+  color: #1a1a2e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(255, 219, 77, 0.4);
+  transition: all 0.2s ease;
+}
+
+#ymd-fab:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 24px rgba(255, 219, 77, 0.6);
+}
+
+#ymd-fab:active {
+  transform: scale(0.95);
+}
+
+/* === Кнопка скачивания на треке === */
+.ymd-dl-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+.ymd-dl-btn:hover {
+  color: #ffdb4d;
+  background: rgba(255, 219, 77, 0.12);
+  transform: scale(1.15);
+}
+
+.ymd-dl-btn.ymd-loading {
+  animation: ymd-pulse 1.2s ease-in-out infinite;
+  color: #ffdb4d;
+  pointer-events: none;
+}
+
+.ymd-dl-btn.ymd-success {
+  color: #4caf50 !important;
+}
+
+.ymd-dl-btn.ymd-error {
+  color: #f44336 !important;
+}
+
+/* === Кнопка "Скачать альбом/плейлист" === */
+.ymd-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border: 1px solid rgba(255, 219, 77, 0.35);
+  border-radius: 20px;
+  background: rgba(255, 219, 77, 0.08);
+  color: #ffdb4d;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  margin: 10px 0 0 12px;
+}
+
+.ymd-page-btn:hover {
+  background: rgba(255, 219, 77, 0.18);
+  border-color: #ffdb4d;
+}
+
+.ymd-page-btn.ymd-loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.ymd-page-btn.ymd-success {
+  border-color: #4caf50;
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.ymd-page-btn.ymd-error {
+  border-color: #f44336;
+  color: #f44336;
+  background: rgba(244, 67, 54, 0.1);
+}
+
+/* === Уведомления === */
+.ymd-notif {
+  position: fixed;
+  bottom: 150px;
+  right: 20px;
+  z-index: 9999999;
+  max-width: 300px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  animation: ymd-slide-in 0.3s ease;
+}
+
+.ymd-notif-success {
+  background: #1a2e1a;
+  color: #4caf50;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.ymd-notif-error {
+  background: #2e1a1a;
+  color: #f44336;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.ymd-notif-loading {
+  background: #1a1a2e;
+  color: #ffdb4d;
+  border: 1px solid rgba(255, 219, 77, 0.3);
+}
+
+/* === Анимации === */
+@keyframes ymd-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes ymd-slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
