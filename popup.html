@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <div class="header">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffdb4d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      <h1>YM Downloader</h1>
+    </div>
+
+    <div id="no-track" class="status-message">
+      <p>Откройте <strong>Яндекс Музыку</strong> и включите трек</p>
+    </div>
+
+    <div id="current-track" class="track-info" style="display: none;">
+      <div class="track-details">
+        <div id="track-title" class="title">—</div>
+        <div id="track-artist" class="artist">—</div>
+      </div>
+      <button id="download-btn" class="download-btn" title="Скачать текущий трек">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </button>
+    </div>
+
+    <div id="status" class="status" style="display: none;"></div>
+
+    <div class="setting-row">
+      <label class="toggle-label" for="save-as-toggle">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Выбирать папку
+      </label>
+      <input type="checkbox" id="save-as-toggle" class="toggle-check">
+    </div>
+
+    <div class="footer">v2.0</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

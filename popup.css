@@ -1,0 +1,106 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  width: 320px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0d0d1a;
+  color: #fff;
+}
+
+.popup-container { padding: 16px; }
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.header h1 { font-size: 16px; font-weight: 700; color: #ffdb4d; }
+
+.status-message {
+  text-align: center;
+  padding: 16px 12px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
+}
+
+.status-message strong { color: rgba(255, 255, 255, 0.7); }
+
+.track-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.track-details { flex: 1; min-width: 0; overflow: hidden; }
+
+.title {
+  font-size: 14px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.artist {
+  font-size: 12px; color: rgba(255, 255, 255, 0.45);
+  margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.download-btn {
+  width: 38px; height: 38px;
+  border: none; border-radius: 50%;
+  background: rgba(255, 219, 77, 0.15); color: #ffdb4d;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: all 0.2s ease;
+}
+
+.download-btn:hover { background: rgba(255, 219, 77, 0.3); transform: scale(1.08); }
+.download-btn.loading { animation: spin 1s linear infinite; pointer-events: none; }
+
+.status {
+  margin-top: 10px; padding: 8px 12px;
+  border-radius: 8px; font-size: 12px; text-align: center;
+}
+
+.status.success { background: rgba(76, 175, 80, 0.1); color: #4caf50; border: 1px solid rgba(76, 175, 80, 0.2); }
+.status.error { background: rgba(244, 67, 54, 0.1); color: #f44336; border: 1px solid rgba(244, 67, 54, 0.2); }
+.status.info { background: rgba(255, 219, 77, 0.08); color: #ffdb4d; border: 1px solid rgba(255, 219, 77, 0.15); }
+
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 10px; padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03); border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.toggle-label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: rgba(255, 255, 255, 0.5);
+  cursor: pointer; user-select: none;
+}
+
+.toggle-check {
+  appearance: none; -webkit-appearance: none;
+  width: 36px; height: 20px;
+  background: rgba(255, 255, 255, 0.12); border-radius: 10px;
+  position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0;
+}
+
+.toggle-check::before {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  background: rgba(255, 255, 255, 0.5); border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.toggle-check:checked { background: rgba(255, 219, 77, 0.35); }
+.toggle-check:checked::before { left: 18px; background: #ffdb4d; }
+
+.footer { margin-top: 10px; text-align: center; font-size: 10px; color: rgba(255, 255, 255, 0.18); }
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
