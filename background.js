@@ -1,4 +1,17 @@
-// Yandex Music Downloader — Background v2.0
+// Yandex Music Downloader — Background Service Worker v3.0
+// Cross-service download coordinator
+
+importScripts(
+  'lib/md5.js',
+  'lib/core.js',
+  'services/yandex.js',
+  'services/bandcamp.js',
+  'services/soundcloud.js',
+);
+
+// ═══════════════════════════════════════
+// YANDEX AUDIO CAPTURE (webRequest)
+// ═══════════════════════════════════════
 
 const capturedAudio = {};
 
@@ -17,24 +30,96 @@ chrome.webRequest.onBeforeRequest.addListener(
     if (!capturedAudio[tabId]) capturedAudio[tabId] = [];
     capturedAudio[tabId].unshift({ url, timestamp: Date.now() });
     if (capturedAudio[tabId].length > 20) capturedAudio[tabId] = capturedAudio[tabId].slice(0, 20);
-    console.log(`[YMD] Captured audio (tab ${tabId}):`, url.substring(0, 100));
   },
   { urls: ['*://*.storage.mds.yandex.net/*', '*://storage.mds.yandex.net/*', '*://*.strm.yandex.net/*'], types: ['media', 'xmlhttprequest', 'other'] }
 );
 
 chrome.tabs.onRemoved.addListener((tabId) => { delete capturedAudio[tabId]; });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+// ═══════════════════════════════════════
+// DOWNLOAD HELPERS
+// ═══════════════════════════════════════
 
+function chromeDownload(url, filename, saveAs) {
+  return new Promise((resolve) => {
+    chrome.downloads.download({ url, filename, saveAs: !!saveAs }, (downloadId) => {
+      if (chrome.runtime.lastError) resolve({ success: false, error: chrome.runtime.lastError.message });
+      else resolve({ success: true, downloadId });
+    });
+  });
+}
+
+function getSaveAs() {
+  return new Promise(resolve => chrome.storage.local.get('saveAs', d => resolve(!!d.saveAs)));
+}
+
+// ═══════════════════════════════════════
+// PASTE-LINK FLOW (cross-service)
+// ═══════════════════════════════════════
+
+function pushProgress(payload) {
+  chrome.runtime.sendMessage({ action: 'pasteProgress', ...payload }).catch(() => {});
+}
+
+async function downloadByUrl(rawUrl) {
+  const detected = globalThis.YMD.registry.detectByUrl(rawUrl);
+  if (!detected) {
+    pushProgress({ status: 'error', message: 'Сервис не распознан. Проверьте ссылку.' });
+    return { success: false, error: 'Сервис не распознан' };
+  }
+  const { service, parsed } = detected;
+  pushProgress({ status: 'starting', service: service.displayName, type: parsed.type });
+
+  let tracks;
+  try {
+    tracks = await service.listTracks(parsed);
+  } catch (err) {
+    pushProgress({ status: 'error', message: 'Не удалось получить треки: ' + err.message });
+    return { success: false, error: err.message };
+  }
+
+  if (!tracks?.length) {
+    pushProgress({ status: 'error', message: 'Треки не найдены' });
+    return { success: false, error: 'Треки не найдены' };
+  }
+
+  const saveAs = await getSaveAs();
+  const folder = service.name; // subfolder per service for batch downloads
+  let downloaded = 0;
+  const isBatch = tracks.length > 1;
+
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i];
+    const labelTitle = (t.artist && t.title) ? `${t.artist} - ${t.title}` : (t.title || `track ${i + 1}`);
+    pushProgress({ status: 'progress', current: i + 1, total: tracks.length, title: labelTitle });
+    try {
+      const audioUrl = await service.getAudioUrl(t, {});
+      if (!audioUrl) throw new Error('audio URL пустой');
+      const filename = service.getFilename(t) || `track.mp3`;
+      const fullName = isBatch ? `${folder}/${filename}` : filename;
+      const res = await chromeDownload(audioUrl, fullName, saveAs && !isBatch);
+      if (res.success) downloaded++;
+      else console.warn('[YMD] download failed:', res.error);
+    } catch (err) {
+      console.warn('[YMD] track failed:', err);
+    }
+    if (i < tracks.length - 1) await globalThis.YMD.utils.sleep(400);
+  }
+  pushProgress({ status: 'done', downloaded, total: tracks.length });
+  return { success: true, downloaded, total: tracks.length };
+}
+
+// ═══════════════════════════════════════
+// MESSAGES
+// ═══════════════════════════════════════
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'getCapturedAudio') {
     const tabId = message.tabId || sender.tab?.id;
     const urls = capturedAudio[tabId] || [];
     const fresh = urls.filter(u => Date.now() - u.timestamp < 5 * 60 * 1000);
-    if (fresh.length > 0) {
-      sendResponse({ success: true, url: fresh[0].url, count: fresh.length });
-    } else {
-      sendResponse({ success: false, error: 'Нет перехваченных URL. Переключите трек.' });
-    }
+    if (fresh.length > 0) sendResponse({ success: true, url: fresh[0].url, count: fresh.length });
+    else sendResponse({ success: false, error: 'Нет перехваченных URL. Переключите трек.' });
     return true;
   }
 
@@ -50,12 +135,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               if (chrome.runtime.lastError) sendResponse({ success: false, error: chrome.runtime.lastError.message });
               else sendResponse({ success: true, downloadId: id2 });
             });
-          } else {
-            sendResponse({ success: false, error: chrome.runtime.lastError.message });
-          }
-        } else {
-          sendResponse({ success: true, downloadId });
-        }
+          } else sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        } else sendResponse({ success: true, downloadId });
       });
     });
     return true;
@@ -82,6 +163,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         else sendResponse(resp || { success: false });
       });
     });
+    return true;
+  }
+
+  if (message.action === 'detectUrl') {
+    const detected = globalThis.YMD.registry.detectByUrl(message.url);
+    sendResponse(detected ? {
+      success: true,
+      service: detected.service.name,
+      displayName: detected.service.displayName,
+      type: detected.parsed.type,
+    } : { success: false });
+    return true;
+  }
+
+  if (message.action === 'pasteDownload') {
+    downloadByUrl(message.url).then(r => sendResponse(r)).catch(e => sendResponse({ success: false, error: e.message }));
     return true;
   }
 });

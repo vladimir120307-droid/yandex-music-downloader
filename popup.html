@@ -12,11 +12,11 @@
         <polyline points="7 10 12 15 17 10"/>
         <line x1="12" y1="15" x2="12" y2="3"/>
       </svg>
-      <h1>YM Downloader</h1>
+      <h1>Music Downloader</h1>
     </div>
 
     <div id="no-track" class="status-message">
-      <p>Откройте <strong>Яндекс Музыку</strong> и включите трек</p>
+      <p>Откройте <strong>Яндекс Музыку</strong> и включите трек,<br>или вставьте ссылку ниже.</p>
     </div>
 
     <div id="current-track" class="track-info" style="display: none;">
@@ -35,6 +35,20 @@
 
     <div id="status" class="status" style="display: none;"></div>
 
+    <div class="paste-section">
+      <div class="paste-label">Скачать по ссылке</div>
+      <input type="text" id="url-input" placeholder="вставьте ссылку (трек / альбом / плейлист)" autocomplete="off" spellcheck="false">
+      <div id="url-hint" class="url-hint"></div>
+      <button id="paste-btn" class="paste-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:-2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Скачать
+      </button>
+    </div>
+
+    <div id="paste-progress" class="paste-progress" style="display: none;">
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      <div id="progress-text" class="progress-text">—</div>
+    </div>
+
     <div class="setting-row">
       <label class="toggle-label" for="save-as-toggle">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
@@ -43,7 +57,7 @@
       <input type="checkbox" id="save-as-toggle" class="toggle-check">
     </div>
 
-    <div class="footer">v2.0</div>
+    <div class="footer">v3.0 · Я.Музыка · Bandcamp · SoundCloud</div>
   </div>
 
   <script src="popup.js"></script>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Yandex Music Downloader",
-  "version": "2.0.0",
-  "description": "Скачивайте треки, альбомы и плейлисты с Яндекс Музыки",
+  "name": "Music Downloader (Я.Музыка / Bandcamp / SoundCloud)",
+  "version": "3.0.0",
+  "description": "Скачивайте треки, альбомы и плейлисты с Яндекс Музыки, Bandcamp и SoundCloud — на странице или по ссылке из попапа.",
   "permissions": [
     "activeTab",
     "downloads",
@@ -17,7 +17,14 @@
     "*://music.yandex.ua/*",
     "*://*.storage.mds.yandex.net/*",
     "*://storage.mds.yandex.net/*",
-    "*://*.strm.yandex.net/*"
+    "*://*.strm.yandex.net/*",
+    "*://*.bandcamp.com/*",
+    "*://bandcamp.com/*",
+    "*://*.bcbits.com/*",
+    "*://soundcloud.com/*",
+    "*://*.soundcloud.com/*",
+    "*://*.sndcdn.com/*",
+    "*://api-v2.soundcloud.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -31,7 +38,12 @@
         "*://music.yandex.by/*",
         "*://music.yandex.ua/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "lib/md5.js",
+        "lib/core.js",
+        "services/yandex.js",
+        "content.js"
+      ],
       "css": ["content.css"],
       "run_at": "document_idle"
     }
