@@ -322,14 +322,76 @@
   function createFAB() {
     const fab = document.createElement('button');
     fab.id = 'ymd-fab';
-    fab.title = 'Скачать текущий трек';
+    fab.title = 'Скачать текущий трек (зажмите и тяните, чтобы переместить)';
     fab.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
-    fab.addEventListener('click', async () => {
+    document.body.appendChild(fab);
+
+    const FAB_SIZE = 48, MARGIN = 8, DRAG_THRESHOLD = 4;
+
+    function applyPos(left, top) {
+      const maxL = window.innerWidth - FAB_SIZE - MARGIN;
+      const maxT = window.innerHeight - FAB_SIZE - MARGIN;
+      left = Math.max(MARGIN, Math.min(maxL, left));
+      top  = Math.max(MARGIN, Math.min(maxT, top));
+      fab.style.left = left + 'px';
+      fab.style.top  = top + 'px';
+      fab.style.right = 'auto';
+      fab.style.bottom = 'auto';
+    }
+
+    try {
+      const saved = JSON.parse(localStorage.getItem('ymd-fab-pos') || 'null');
+      if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+        applyPos(saved.left, saved.top);
+      }
+    } catch { /* ignore */ }
+
+    window.addEventListener('resize', () => {
+      if (fab.style.left) applyPos(parseFloat(fab.style.left), parseFloat(fab.style.top));
+    });
+
+    let dragging = false, moved = false, sx = 0, sy = 0, ox = 0, oy = 0;
+
+    fab.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      dragging = true; moved = false;
+      sx = e.clientX; sy = e.clientY;
+      const r = fab.getBoundingClientRect();
+      ox = r.left; oy = r.top;
+      fab.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+
+    fab.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      moved = true;
+      fab.classList.add('ymd-dragging');
+      applyPos(ox + dx, oy + dy);
+    });
+
+    fab.addEventListener('pointerup', (e) => {
+      if (!dragging) return;
+      dragging = false;
+      fab.classList.remove('ymd-dragging');
+      try { fab.releasePointerCapture(e.pointerId); } catch {}
+      if (moved) {
+        try {
+          localStorage.setItem('ymd-fab-pos', JSON.stringify({
+            left: parseFloat(fab.style.left),
+            top:  parseFloat(fab.style.top),
+          }));
+        } catch { /* ignore */ }
+      }
+    });
+
+    fab.addEventListener('click', async (e) => {
+      if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; return; }
       fab.classList.add('ymd-loading');
       await downloadCurrentTrack();
       fab.classList.remove('ymd-loading');
     });
-    document.body.appendChild(fab);
   }
 
   function createTrackButton(trackId, albumId, trackEl) {
