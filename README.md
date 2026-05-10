@@ -1,6 +1,11 @@
-# 🎵 Music Downloader (Я.Музыка / Bandcamp / SoundCloud)
+# 🎵 Music Downloader
 
-Расширение для Chromium-браузеров (Edge, Chrome, Яндекс.Браузер) для скачивания музыки с нескольких сервисов — на странице или по ссылке из попапа.
+Универсальный загрузчик музыки и видео — **расширение для браузера** + **десктопная программа**, в одном репозитории.
+
+| | Что качает | Где работает |
+|---|---|---|
+| **Расширение** (Chromium) | Я.Музыка, Bandcamp, SoundCloud | прямо на странице или по ссылке из попапа |
+| **Desktop** (PySide6 + yt-dlp) | 1800+ сайтов: Я.Музыка, YouTube, SoundCloud, Bandcamp, VK, Twitch, Vimeo, RuTube, … | Windows / macOS / Linux |
 
 ## Поддерживаемые сервисы (v3.0)
 
@@ -86,14 +91,28 @@
 
 ## Десктопная программа
 
-Помимо расширения есть отдельный downloader на Python для скачивания только с Я.Музыки:
+В репо есть **два** варианта десктопа:
+
+### `desktop/` — универсальный (новый)
+
+GUI на PySide6 поверх **yt-dlp** (1800+ сайтов: Я.Музыка, YouTube, SoundCloud, Bandcamp, VK, Twitch, Vimeo, RuTube, и т.д.). Аудио (mp3/m4a/flac/opus) и видео (mp4 до 4K). Поддержка cookies из браузера для авторизованных сервисов.
+
+```bash
+cd desktop
+pip install -r requirements.txt
+python main.py
+```
+
+Сборка `.exe`: `python build.py` → `dist/MusicDownloader.exe`. Подробности — [desktop/README.md](desktop/README.md).
+
+### `downloader.py` — Я.Музыка-only (legacy)
+
+Простая программа на tkinter, только для Я.Музыки, без зависимостей кроме `requests`. Нужен OAuth-токен.
 
 ```bash
 pip install requests
 python downloader.py
 ```
-
-Нужен OAuth-токен Яндекса.
 
 ## Roadmap
 
