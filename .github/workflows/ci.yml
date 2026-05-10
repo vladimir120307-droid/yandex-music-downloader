@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Sanity checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate manifest.json
+        run: node -e "JSON.parse(require('fs').readFileSync('manifest.json'))"
+
+      - name: Syntax-check JS files
+        run: |
+          set -e
+          for f in background.js content.js popup.js lib/*.js services/*.js; do
+            echo "checking $f"
+            node --check "$f"
+          done
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile-check Python files
+        run: |
+          python -m py_compile downloader.py
+          cd desktop
+          python -m py_compile main.py window.py core.py settings.py ffmpeg_helper.py build.py

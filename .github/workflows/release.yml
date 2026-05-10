@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v3.0.0). Will be created if missing.'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  extension:
+    name: Build extension .zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate manifest.json
+        run: python -c "import json; json.load(open('manifest.json'))"
+
+      - name: Build zip
+        id: zip
+        run: |
+          set -e
+          VERSION="${GITHUB_REF_NAME:-${{ inputs.tag }}}"
+          OUT="music-downloader-extension-${VERSION}.zip"
+          mkdir -p out
+          zip -r "out/${OUT}" \
+            manifest.json \
+            background.js \
+            content.js content.css \
+            popup.html popup.js popup.css \
+            lib services icons \
+            README.md
+          echo "out=out/${OUT}" >> "$GITHUB_OUTPUT"
+          echo "name=${OUT}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-zip
+          path: ${{ steps.zip.outputs.out }}
+
+  desktop:
+    name: Build desktop .exe (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+
+      - name: Build .exe
+        working-directory: desktop
+        run: python build.py
+
+      - name: Rename binary
+        working-directory: desktop/dist
+        shell: pwsh
+        run: |
+          $tag = "${env:GITHUB_REF_NAME}"
+          if (-not $tag) { $tag = "${{ inputs.tag }}" }
+          if (-not $tag) { $tag = "dev" }
+          Rename-Item -Path "MusicDownloader.exe" -NewName "MusicDownloader-$tag.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: desktop/dist/MusicDownloader-*.exe
+
+  release:
+    name: Publish release
+    needs: [extension, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -la artifacts/**/*
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || inputs.tag }}
+          name: ${{ github.ref_name || inputs.tag }}
+          generate_release_notes: true
+          files: |
+            artifacts/extension-zip/*.zip
+            artifacts/desktop-windows/*.exe
+          body: |
+            ## Что внутри
+
+            - **`music-downloader-extension-*.zip`** — расширение для Chromium-браузеров (Edge / Chrome / Яндекс.Браузер).
+              1. Распакуй
+              2. Открой `chrome://extensions` или `edge://extensions`
+              3. Включи "Режим разработчика"
+              4. "Загрузить распакованное" → выбери папку
+            - **`MusicDownloader-*.exe`** — десктопная программа для Windows. Просто запусти. Для конвертации в mp3 нужен `ffmpeg.exe` рядом ([взять тут](https://github.com/yt-dlp/FFmpeg-Builds/releases)).
+
+            ---
+
+            См. [README](https://github.com/${{ github.repository }}#readme) для подробностей.

@@ -29,6 +29,15 @@
 
 ## Установка
 
+### Готовые сборки (рекомендуется)
+
+[**📥 Скачать с Releases →**](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
+
+- `music-downloader-extension-vX.Y.Z.zip` — расширение для браузера
+- `MusicDownloader-vX.Y.Z.exe` — десктопная программа для Windows
+
+### Расширение из исходников
+
 1. Скачай или клонируй этот репозиторий
 2. Открой `edge://extensions` (или `chrome://extensions`)
 3. Включи **Режим разработчика**
