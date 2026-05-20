@@ -91,11 +91,11 @@
   // DOWNLOAD
   // ═══════════════════════════════════════
 
-  async function downloadFile(url, filename) {
+  async function downloadFile(url, filename, tags) {
     console.log('[YMD] Download:', url.substring(0, 80), '→', filename);
     showNotification('Скачиваю: ' + filename, 'loading');
     return new Promise((resolve) => {
-      chrome.runtime.sendMessage({ action: 'download', url, filename }, resp => {
+      chrome.runtime.sendMessage({ action: 'download', url, filename, tags }, resp => {
         if (resp?.success) { resolve({ success: true, filename }); return; }
         // Fallback: fetch + blob (works for CORS-friendly URLs)
         fetch(url)
@@ -116,9 +116,23 @@
   async function downloadCurrentTrack() {
     const info = getCurrentPlayerInfo();
     if (!info.trackId) { showNotification('Включите трек', 'error'); return { success: false, error: 'Нет трека' }; }
-    const fn = (info.artist && info.title)
-      ? `${sanitize(info.artist)} - ${sanitize(info.title)}.mp3`
-      : `track_${info.trackId}.mp3`;
+
+    let title = info.title;
+    let artist = info.artist;
+    let trackNumber = null;
+
+    // Podcast episodes have no artists in DOM — fetch from API to get show name + episode number
+    if (!artist && info.trackId) {
+      try {
+        const tracks = await yandex.listTracks({ type: 'track', trackId: info.trackId, albumId: info.albumId, origin: ORIGIN });
+        const tr = tracks?.[0];
+        if (tr) { artist = artist || tr.artist || ''; title = title || tr.title || ''; trackNumber = tr.trackNumber || null; }
+      } catch { /* use what DOM gave us */ }
+    }
+
+    const fn = (artist && title)
+      ? `${sanitize(artist)} - ${sanitize(title)}.mp3`
+      : (title ? `${sanitize(title)}.mp3` : `track_${info.trackId}.mp3`);
     try {
       showNotification('Получаю аудио...', 'loading');
       const track = { trackId: info.trackId, albumId: info.albumId, origin: ORIGIN };
@@ -127,7 +141,7 @@
         showNotification('Нет URL. Переключите трек и попробуйте снова.', 'error');
         return { success: false, error: 'Нет URL. Переключите трек.' };
       }
-      await downloadFile(audioUrl, fn);
+      await downloadFile(audioUrl, fn, { title, artist, album: artist, trackNumber });
       showNotification('✓ ' + fn, 'success');
       return { success: true, filename: fn };
     } catch (err) {
@@ -137,14 +151,27 @@
   }
 
   async function downloadTrackById(trackId, albumId, titleInfo) {
-    const fn = (titleInfo?.artist && titleInfo?.title)
-      ? `${sanitize(titleInfo.artist)} - ${sanitize(titleInfo.title)}.mp3`
-      : `track_${trackId}.mp3`;
+    let artist = titleInfo?.artist || '';
+    let title = titleInfo?.title || '';
+    let trackNumber = titleInfo?.trackNumber || null;
+
+    // Podcast episodes: DOM gives no artist (show name) — fetch from API
+    if (!artist && albumId) {
+      try {
+        const tracks = await yandex.listTracks({ type: 'track', trackId, albumId, origin: ORIGIN });
+        const tr = tracks?.[0];
+        if (tr) { artist = tr.artist || artist; title = title || tr.title || ''; trackNumber = tr.trackNumber || null; }
+      } catch { /* ignore */ }
+    }
+
+    const fn = (artist && title)
+      ? `${sanitize(artist)} - ${sanitize(title)}.mp3`
+      : (title ? `${sanitize(title)}.mp3` : `track_${trackId}.mp3`);
     try {
       showNotification('Получаю ссылку...', 'loading');
       const audioUrl = await yandex.getAudioUrl({ trackId, albumId, origin: ORIGIN }, {});
       if (audioUrl) {
-        await downloadFile(audioUrl, fn);
+        await downloadFile(audioUrl, fn, { title, artist, album: artist, trackNumber });
         showNotification('✓ ' + fn, 'success');
         return { success: true, filename: fn };
       }

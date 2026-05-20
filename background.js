@@ -54,6 +54,71 @@ function getSaveAs() {
 }
 
 // ═══════════════════════════════════════
+// ID3v2.3 TAG EMBEDDING
+// ═══════════════════════════════════════
+
+function buildID3(tags) {
+  const enc = new TextEncoder();
+  function makeFrame(id, text) {
+    const body = enc.encode(text);
+    const buf = new Uint8Array(4 + 4 + 2 + 1 + body.length);
+    for (let i = 0; i < 4; i++) buf[i] = id.charCodeAt(i);
+    const sz = 1 + body.length;
+    buf[4] = (sz >> 24) & 0xff; buf[5] = (sz >> 16) & 0xff;
+    buf[6] = (sz >> 8) & 0xff;  buf[7] = sz & 0xff;
+    buf[10] = 3; // UTF-8 encoding
+    buf.set(body, 11);
+    return buf;
+  }
+  const frames = [];
+  if (tags.title)       frames.push(makeFrame('TIT2', tags.title));
+  if (tags.artist)      frames.push(makeFrame('TPE1', tags.artist));
+  if (tags.album)       frames.push(makeFrame('TALB', tags.album));
+  if (tags.trackNumber) frames.push(makeFrame('TRCK', String(tags.trackNumber)));
+  if (!frames.length) return null;
+  const sz = frames.reduce((s, f) => s + f.length, 0);
+  const hdr = new Uint8Array([
+    0x49, 0x44, 0x33, 0x03, 0x00, 0x00,  // "ID3" v2.3
+    (sz >> 21) & 0x7f, (sz >> 14) & 0x7f, (sz >> 7) & 0x7f, sz & 0x7f, // synchsafe size
+  ]);
+  const out = new Uint8Array(hdr.length + sz);
+  out.set(hdr);
+  let off = hdr.length;
+  for (const f of frames) { out.set(f, off); off += f.length; }
+  return out;
+}
+
+// Fetches audio, prepends ID3 header, downloads via data URL.
+// URL.createObjectURL is unavailable in MV3 service workers, so we use base64 data URL.
+// Falls back to direct URL if fetch fails.
+async function downloadWithTags(audioUrl, filename, tags, saveAs) {
+  const id3 = (tags?.title || tags?.artist) ? buildID3(tags) : null;
+  if (!id3) return chromeDownload(audioUrl, filename, saveAs);
+  try {
+    const resp = await fetch(audioUrl, {
+      credentials: 'include',
+      headers: { 'Referer': 'https://music.yandex.ru/' },
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const audio = await resp.arrayBuffer();
+    const merged = new Uint8Array(id3.length + audio.byteLength);
+    merged.set(id3);
+    merged.set(new Uint8Array(audio), id3.length);
+    // Encode to base64 in chunks to avoid max call stack errors on large files
+    const CHUNK = 0x8000;
+    let binary = '';
+    for (let i = 0; i < merged.length; i += CHUNK) {
+      binary += String.fromCharCode(...merged.subarray(i, i + CHUNK));
+    }
+    const dataUrl = 'data:audio/mpeg;base64,' + btoa(binary);
+    return chromeDownload(dataUrl, filename, saveAs);
+  } catch (e) {
+    console.warn('[YMD] ID3 embed failed, fallback:', e.message);
+    return chromeDownload(audioUrl, filename, saveAs);
+  }
+}
+
+// ═══════════════════════════════════════
 // PASTE-LINK FLOW (cross-service)
 // ═══════════════════════════════════════
 
@@ -97,7 +162,8 @@ async function downloadByUrl(rawUrl) {
       if (!audioUrl) throw new Error('audio URL пустой');
       const filename = service.getFilename(t) || `track.mp3`;
       const fullName = isBatch ? `${folder}/${filename}` : filename;
-      const res = await chromeDownload(audioUrl, fullName, saveAs && !isBatch);
+      const tags = { title: t.title, artist: t.artist, album: t.artist, trackNumber: t.trackNumber };
+      const res = await downloadWithTags(audioUrl, fullName, tags, saveAs && !isBatch);
       if (res.success) downloaded++;
       else console.warn('[YMD] download failed:', res.error);
     } catch (err) {
@@ -124,20 +190,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'download') {
-    const url = message.url;
-    const filename = message.filename || 'track.mp3';
+    const { url, filename = 'track.mp3', tags } = message;
     chrome.storage.local.get('saveAs', (data) => {
       const saveAs = !!data.saveAs;
-      chrome.downloads.download({ url, filename, saveAs }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          if (saveAs) {
-            chrome.downloads.download({ url, saveAs: true }, (id2) => {
-              if (chrome.runtime.lastError) sendResponse({ success: false, error: chrome.runtime.lastError.message });
-              else sendResponse({ success: true, downloadId: id2 });
-            });
-          } else sendResponse({ success: false, error: chrome.runtime.lastError.message });
-        } else sendResponse({ success: true, downloadId });
-      });
+      downloadWithTags(url, filename, tags, saveAs)
+        .then(r => sendResponse(r))
+        .catch(e => sendResponse({ success: false, error: e.message }));
     });
     return true;
   }

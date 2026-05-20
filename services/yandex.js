@@ -13,9 +13,13 @@
     const p = u.pathname;
     let m = p.match(/\/album\/(\d+)\/track\/(\d+)/);
     if (m) return { type: 'track', albumId: m[1], trackId: m[2], origin: u.origin };
+    m = p.match(/\/podcast\/(\d+)\/episode\/(\d+)/);
+    if (m) return { type: 'track', albumId: m[1], trackId: m[2], origin: u.origin };
     m = p.match(/\/track\/(\d+)/);
     if (m) return { type: 'track', albumId: null, trackId: m[1], origin: u.origin };
     m = p.match(/\/album\/(\d+)/);
+    if (m) return { type: 'album', albumId: m[1], origin: u.origin };
+    m = p.match(/\/podcast\/(\d+)/);
     if (m) return { type: 'album', albumId: m[1], origin: u.origin };
     m = p.match(/\/users\/([^/]+)\/playlists\/(\d+)/);
     if (m) return { type: 'playlist', owner: m[1], kinds: m[2], origin: u.origin };
@@ -28,14 +32,23 @@
     });
     if (!resp.ok) throw new Error('Не удалось получить треки альбома');
     const data = await resp.json();
+    // API sometimes wraps album data under data.album, sometimes at data root
+    const album = data.album || data;
+    const showTitle = album.title || data.title || '';
+    console.log('[YMD] fetchAlbumTracks', albumId, 'showTitle:', showTitle, 'volumes:', album.volumes?.length ?? data.volumes?.length);
     const out = [];
-    for (const vol of (data.volumes || [])) {
-      for (const t of vol) {
+    for (const vol of (album.volumes || data.volumes || [])) {
+      // vol is always an array (one per disk), but guard anyway
+      const tracks = Array.isArray(vol) ? vol : [vol];
+      for (const t of tracks) {
+        if (!t?.id) continue;
+        const artists = (t.artists || []).map(a => a.name).join(', ');
         out.push({
           trackId: String(t.id),
           albumId: String(t.albums?.[0]?.id || albumId),
           title: t.title || '',
-          artist: (t.artists || []).map(a => a.name).join(', ') || '',
+          artist: artists || showTitle,
+          trackNumber: t.albums?.[0]?.trackPosition || null,
           origin,
         });
       }
@@ -52,11 +65,14 @@
     const pl = data.playlist || data;
     return (pl.tracks || []).map(t => {
       const tr = t.track || t;
+      const artists = (tr.artists || []).map(a => a.name).join(', ');
+      const showTitle = tr.albums?.[0]?.title || '';
       return {
         trackId: String(tr.id),
         albumId: String(tr.albums?.[0]?.id || ''),
         title: tr.title || '',
-        artist: (tr.artists || []).map(a => a.name).join(', ') || '',
+        artist: artists || showTitle,
+        trackNumber: tr.albums?.[0]?.trackPosition || null,
         origin,
       };
     }).filter(t => t.trackId);
@@ -77,11 +93,14 @@
       if (resp.ok) {
         const data = await resp.json();
         const tr = data.track || data;
+        const artists = (tr.artists || []).map(a => a.name).join(', ');
+        const showTitle = data.album?.title || tr.albums?.[0]?.title || '';
         return {
           trackId: String(trackId),
           albumId: String(tr.albums?.[0]?.id || albumId || ''),
           title: tr.title || '',
-          artist: (tr.artists || []).map(a => a.name).join(', ') || '',
+          artist: artists || showTitle,
+          trackNumber: tr.albums?.[0]?.trackPosition || null,
           origin,
         };
       }
