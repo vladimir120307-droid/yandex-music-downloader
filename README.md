@@ -7,6 +7,34 @@
 | **Расширение** (Chromium) | Я.Музыка, Bandcamp, SoundCloud | прямо на странице или по ссылке из попапа |
 | **Desktop** (PySide6 + yt-dlp) | 1800+ сайтов: Я.Музыка, YouTube, SoundCloud, Bandcamp, VK, Twitch, Vimeo, RuTube, … | Windows / macOS / Linux |
 
+---
+
+## ⚡ Быстрый старт
+
+### Если ты просто хочешь качать (не разработчик)
+
+1. Зайди в [**Releases**](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest) на гитхабе
+2. Скачай **`MusicDownloader-vX.Y.Z.exe`** (для Windows) — это десктопная программа
+3. Запусти `MusicDownloader.exe`
+4. Вставь ссылку (на трек / альбом / плейлист / видео) и нажми **«Скачать»**
+5. Готово — файл лежит в папке `Downloads/MusicDownloader/`
+
+**Когда нужны дополнительные действия:**
+
+- 🟡 **Для YouTube / SoundCloud / видео** → нажми кнопку **«Установить ffmpeg»** внизу окна. Программа скачает его сама (~80 МБ, один раз). Без ffmpeg работают только Я.Музыка и Bandcamp.
+- 🟡 **Для премиум-треков Я.Музыки / приватных плейлистов** → в дропдауне **«Cookies»** выбери браузер, в котором ты залогинен (Chrome / Edge / Firefox). ⚠ Браузер при этом должен быть закрыт.
+
+### Если хочешь скачивать прямо в браузере
+
+1. Скачай **`music-downloader-extension-vX.Y.Z.zip`** из [Releases](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
+2. Распакуй архив куда-нибудь
+3. Открой `chrome://extensions` (или `edge://extensions`)
+4. Включи **«Режим разработчика»** в правом верхнем углу
+5. Нажми **«Загрузить распакованное расширение»** и выбери папку с распакованным архивом
+6. Зайди на [music.yandex.ru](https://music.yandex.ru), [bandcamp.com](https://bandcamp.com) или [soundcloud.com](https://soundcloud.com) — увидишь жёлтую кнопку скачивания
+
+---
+
 ## Поддерживаемые сервисы (v3.0)
 
 | Сервис | На странице | По ссылке (paste-link) |

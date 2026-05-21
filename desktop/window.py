@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import Qt, QObject, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout,
@@ -15,9 +15,36 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+import ffmpeg_installer
 from core import DownloadWorker
 from ffmpeg_helper import find_ffmpeg, suggest_install
 from settings import Settings
+
+
+class FfmpegInstallWorker(QObject):
+    progress = Signal(dict)
+    done = Signal(str)
+    error = Signal(str)
+
+    def __init__(self, target_dir: Path):
+        super().__init__()
+        self._target = target_dir
+        self._cancel = False
+
+    def cancel(self):
+        self._cancel = True
+
+    @Slot()
+    def run(self):
+        try:
+            path = ffmpeg_installer.install_ffmpeg(
+                self._target,
+                progress_cb=lambda d: self.progress.emit(d),
+                cancel_check=lambda: self._cancel,
+            )
+            self.done.emit(str(path))
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 STYLESHEET = """
@@ -150,8 +177,9 @@ class MainWindow(QMainWindow):
         title.setObjectName('title')
         layout.addWidget(title)
 
-        subtitle = QLabel('Я.Музыка · YouTube · SoundCloud · Bandcamp · VK · Twitch · 1800+ сайтов')
+        subtitle = QLabel('Я.Музыка (прямой mp3 без ffmpeg) · YouTube · SoundCloud · Bandcamp · VK · Twitch · 1800+ сайтов')
         subtitle.setObjectName('subtitle')
+        subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
         # URL input row
@@ -235,10 +263,10 @@ class MainWindow(QMainWindow):
         clear_btn.clicked.connect(self._clear_finished)
         action_row.addWidget(clear_btn)
         action_row.addStretch()
-        ffmpeg_btn = QPushButton('Проверить ffmpeg')
-        ffmpeg_btn.setProperty('secondary', True)
-        ffmpeg_btn.clicked.connect(self._check_ffmpeg_dialog)
-        action_row.addWidget(ffmpeg_btn)
+        self.ffmpeg_btn = QPushButton('ffmpeg…')
+        self.ffmpeg_btn.setProperty('secondary', True)
+        self.ffmpeg_btn.clicked.connect(self._ffmpeg_button_clicked)
+        action_row.addWidget(self.ffmpeg_btn)
         layout.addLayout(action_row)
 
         self.setCentralWidget(central)
@@ -261,8 +289,14 @@ class MainWindow(QMainWindow):
     def _refresh_status(self):
         if self.ffmpeg_path:
             self.status_bar.showMessage(f'ffmpeg: {self.ffmpeg_path}')
+            if hasattr(self, 'ffmpeg_btn'):
+                self.ffmpeg_btn.setText('ffmpeg ✓')
         else:
-            self.status_bar.showMessage('⚠ ffmpeg не найден — для mp3/видео-конвертации потребуется его установить')
+            self.status_bar.showMessage(
+                '⚠ ffmpeg не найден — нажмите «Установить ffmpeg» (Я.Музыка работает и без него)'
+            )
+            if hasattr(self, 'ffmpeg_btn'):
+                self.ffmpeg_btn.setText('Установить ffmpeg')
 
     def _choose_dir(self):
         d = QFileDialog.getExistingDirectory(self, 'Папка для загрузок', self.dir_edit.text())
@@ -275,14 +309,84 @@ class MainWindow(QMainWindow):
         Path(path).mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
-    def _check_ffmpeg_dialog(self):
+    def _ffmpeg_button_clicked(self):
+        # Re-check first
         path = find_ffmpeg()
         self.ffmpeg_path = path
         self._refresh_status()
         if path:
-            QMessageBox.information(self, 'ffmpeg', f'ffmpeg найден:\n{path}')
-        else:
+            QMessageBox.information(self, 'ffmpeg', f'ffmpeg найден:\n{path}\n\nРаботает для всех сайтов.')
+            return
+        if os.name != 'nt':
             QMessageBox.warning(self, 'ffmpeg не найден', suggest_install())
+            return
+        target = ffmpeg_installer.get_install_target()
+        reply = QMessageBox.question(
+            self, 'Установить ffmpeg?',
+            f'Скачать ffmpeg (~80 МБ) и положить в:\n{target}\n\n'
+            f'Это нужно для скачивания с YouTube, SoundCloud и видео.\n'
+            f'Для Я.Музыки и Bandcamp работает и без него.\n\n'
+            f'Продолжить?',
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._start_ffmpeg_install(target)
+
+    def _start_ffmpeg_install(self, target):
+        if getattr(self, '_ffmpeg_thread', None) is not None:
+            return  # already running
+        self.ffmpeg_btn.setEnabled(False)
+        self.ffmpeg_btn.setText('Скачиваю ffmpeg…')
+        self.status_bar.showMessage('Скачиваю ffmpeg (~80 МБ)…')
+
+        thread = QThread(self)
+        worker = FfmpegInstallWorker(target)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._on_ffmpeg_progress)
+        worker.done.connect(self._on_ffmpeg_done)
+        worker.error.connect(self._on_ffmpeg_error)
+        worker.done.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_ffmpeg_thread)
+        self._ffmpeg_thread = thread
+        thread.start()
+
+    def _clear_ffmpeg_thread(self):
+        self._ffmpeg_thread = None
+        self.ffmpeg_btn.setEnabled(True)
+
+    @Slot(dict)
+    def _on_ffmpeg_progress(self, d):
+        status = d.get('status', '')
+        msg = d.get('message', '')
+        if status == 'downloading':
+            downloaded = d.get('downloaded') or 0
+            total = d.get('total') or 0
+            if total:
+                pct = int(downloaded / total * 100)
+                self.status_bar.showMessage(f'{msg}  {pct}%  ({humanize(downloaded)}/{humanize(total)})')
+            else:
+                self.status_bar.showMessage(f'{msg}  {humanize(downloaded)}')
+        else:
+            self.status_bar.showMessage(msg or status)
+
+    @Slot(str)
+    def _on_ffmpeg_done(self, path):
+        self.ffmpeg_path = path
+        self._refresh_status()
+        QMessageBox.information(self, 'ffmpeg установлен',
+                                f'Готово! ffmpeg установлен в:\n{path}\n\n'
+                                'Теперь работает скачивание со всех сайтов.')
+
+    @Slot(str)
+    def _on_ffmpeg_error(self, msg):
+        self._refresh_status()
+        QMessageBox.warning(self, 'Не получилось установить ffmpeg',
+                            f'{msg}\n\nМожно поставить вручную — см. README.')
 
     # ─────────────────────── Job management ───────────────────────
     def add_jobs_from_input(self):

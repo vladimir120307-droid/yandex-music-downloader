@@ -1,4 +1,4 @@
-"""yt-dlp worker — runs in QThread, emits Qt signals."""
+"""Worker для скачиваний — yt-dlp для большинства сайтов, отдельная ветка для Я.Музыки."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,6 +6,8 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, Slot
 
 import yt_dlp
+
+import yandex_music
 
 
 class CancelledError(Exception):
@@ -88,28 +90,46 @@ class DownloadWorker(QObject):
 
     @Slot()
     def run(self):
-        ydl_opts = build_ydl_opts(self.options, self._hook)
-        final_path = ''
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(self.url, download=False)
-                if self._cancel:
-                    self.error.emit(self.job_id, 'Отменено')
-                    return
-                self.info_ready.emit(self.job_id, info or {})
-                ydl.download([self.url])
-                if info:
-                    try:
-                        final_path = ydl.prepare_filename(info)
-                        if self.options.get('audio_only'):
-                            ext = self.options.get('audio_format', 'mp3')
-                            final_path = str(Path(final_path).with_suffix('.' + ext))
-                    except Exception:
-                        final_path = ''
-            self.done.emit(self.job_id, final_path)
+            if yandex_music.is_yandex_music_url(self.url):
+                self._run_yandex_music()
+            else:
+                self._run_ytdlp()
         except CancelledError:
             self.error.emit(self.job_id, 'Отменено')
         except yt_dlp.utils.DownloadError as e:
             self.error.emit(self.job_id, str(e))
         except Exception as e:
             self.error.emit(self.job_id, f'{type(e).__name__}: {e}')
+
+    def _run_ytdlp(self):
+        ydl_opts = build_ydl_opts(self.options, self._hook)
+        final_path = ''
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(self.url, download=False)
+            if self._cancel:
+                raise CancelledError()
+            self.info_ready.emit(self.job_id, info or {})
+            ydl.download([self.url])
+            if info:
+                try:
+                    final_path = ydl.prepare_filename(info)
+                    if self.options.get('audio_only'):
+                        ext = self.options.get('audio_format', 'mp3')
+                        final_path = str(Path(final_path).with_suffix('.' + ext))
+                except Exception:
+                    final_path = ''
+        self.done.emit(self.job_id, final_path)
+
+    def _run_yandex_music(self):
+        output_dir = self.options.get('output_dir') or str(Path.home() / 'Downloads')
+        cookies_browser = self.options.get('cookies_browser')
+        final_path = yandex_music.download(
+            self.url,
+            output_dir,
+            cookies_browser=cookies_browser,
+            info_cb=lambda info: self.info_ready.emit(self.job_id, info),
+            progress_cb=lambda p: self.progress.emit(self.job_id, p),
+            cancel_check=lambda: self._cancel,
+        )
+        self.done.emit(self.job_id, final_path)
