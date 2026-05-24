@@ -1,5 +1,11 @@
 # 🎵 Music Downloader
 
+[![Release](https://img.shields.io/github/v/release/vladimir120307-droid/yandex-music-downloader?color=ffdb4d&label=latest&style=flat-square)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/vladimir120307-droid/yandex-music-downloader/total?style=flat-square&color=4caf50)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases)
+[![Stars](https://img.shields.io/github/stars/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=f0c000)](https://github.com/vladimir120307-droid/yandex-music-downloader/stargazers)
+[![License](https://img.shields.io/github/license/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=888)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/vladimir120307-droid/yandex-music-downloader/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/vladimir120307-droid/yandex-music-downloader/actions)
+
 Универсальный загрузчик музыки и видео — **расширение для браузера** + **десктопная программа**, в одном репозитории.
 
 | | Что качает | Где работает |

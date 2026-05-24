@@ -1,0 +1,60 @@
+name: 🐛 Баг
+description: Что-то не работает / ломается / ведёт себя странно
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Что происходит
+      description: Опиши коротко. Что нажал → что ожидал → что получил.
+      placeholder: |
+        Вставил ссылку https://... → нажал «Скачать» → получил ошибку «...»
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Где ломается
+      options:
+        - Расширение (браузер)
+        - Десктопная программа (.exe)
+        - Десктоп из исходников (python main.py)
+        - Не уверен
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия
+      description: «v3.1.0» или название коммита. Видно в footer попапа или внизу окна десктопа.
+      placeholder: v3.1.0
+
+  - type: input
+    id: env
+    attributes:
+      label: Браузер / ОС
+      placeholder: Edge 130 / Windows 11
+
+  - type: input
+    id: url
+    attributes:
+      label: Какая ссылка ломается
+      description: Если ссылка приватная — пиши что-то типа «приватный плейлист Я.Музыки»
+      placeholder: https://music.yandex.ru/album/123
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Ошибка из консоли
+      description: |
+        **Расширение:** F12 на странице → вкладка Console → скопируй красные строки с `[YMD]`
+        **Десктоп:** запусти из консоли (`python main.py` или `MusicDownloader.exe` из cmd) и приложи вывод
+      render: shell
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Скриншот
+      description: Перетащи изображение сюда или вставь из буфера

@@ -1,0 +1,31 @@
+name: ✨ Фича / новый сервис
+description: Запросить новую возможность или поддержку сайта
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Что хочешь
+      placeholder: «Добавить поддержку XXX» или «Сделать кнопку YYY»
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Зачем это нужно
+      description: Чем поможет / какую боль решит
+    validations:
+      required: true
+
+  - type: input
+    id: link
+    attributes:
+      label: Пример ссылки (если речь о новом сервисе)
+      placeholder: https://newsite.com/album/123
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Дополнительно
+      description: Скриншоты, ссылки на похожие реализации, всё что приходит в голову
