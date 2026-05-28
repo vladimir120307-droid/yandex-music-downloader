@@ -166,6 +166,84 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'grabYamToken') {
+    const tabId = sender.tab?.id;
+    if (!tabId) { sendResponse({ token: null, error: 'no tab' }); return true; }
+    chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => {
+        const TOKEN_RE = /^[A-Za-z0-9_\-]{30,}$/;
+        const KEY_RE = /token|oauth|access|bearer/i;
+        const looksLikeToken = (v) => typeof v === 'string' && TOKEN_RE.test(v);
+        function deepFind(obj, depth) {
+          if (depth > 8 || !obj || typeof obj !== 'object') return null;
+          for (const key in obj) {
+            try {
+              const val = obj[key];
+              if (looksLikeToken(val) && KEY_RE.test(key)) return val;
+              if (val && typeof val === 'object') {
+                const r = deepFind(val, depth + 1);
+                if (r) return r;
+              }
+            } catch {}
+          }
+          return null;
+        }
+        let token = null, source = '';
+        try {
+          const snaps = window.__STATE_SNAPSHOT__;
+          if (Array.isArray(snaps)) {
+            for (const s of snaps) {
+              const v = deepFind(s, 0);
+              if (v) { token = v; source = '__STATE_SNAPSHOT__'; break; }
+            }
+          } else if (snaps && typeof snaps === 'object') {
+            token = deepFind(snaps, 0);
+            if (token) source = '__STATE_SNAPSHOT__';
+          }
+        } catch {}
+        if (!token) {
+          try {
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i);
+              if (!k || !KEY_RE.test(k)) continue;
+              const v = localStorage.getItem(k);
+              if (looksLikeToken(v)) { token = v; source = 'localStorage:' + k; break; }
+              try {
+                const parsed = JSON.parse(v);
+                const r = deepFind(parsed, 0);
+                if (r) { token = r; source = 'localStorage:' + k + ' (json)'; break; }
+              } catch {}
+            }
+          } catch {}
+        }
+        if (!token) {
+          try {
+            for (let i = 0; i < sessionStorage.length; i++) {
+              const k = sessionStorage.key(i);
+              if (!k || !KEY_RE.test(k)) continue;
+              const v = sessionStorage.getItem(k);
+              if (looksLikeToken(v)) { token = v; source = 'sessionStorage:' + k; break; }
+            }
+          } catch {}
+        }
+        return { token, source };
+      },
+    }, (results) => {
+      const result = results?.[0]?.result || { token: null, source: '' };
+      if (result.token) {
+        chrome.storage.local.set({
+          yamToken: result.token,
+          yamTokenSource: result.source,
+          yamTokenAt: Date.now(),
+        });
+      }
+      sendResponse(result);
+    });
+    return true;
+  }
+
   if (message.action === 'detectUrl') {
     const detected = globalThis.YMD.registry.detectByUrl(message.url);
     sendResponse(detected ? {

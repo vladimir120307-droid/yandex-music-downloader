@@ -102,6 +102,57 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // ═══ Yandex Music token ═══
+  const OAUTH_CLIENT_ID = '23cabbbdc6cd418abb4b39c32c41195d';
+  const OAUTH_URL = `https://oauth.yandex.ru/authorize?response_type=token&client_id=${OAUTH_CLIENT_ID}`;
+  const tokenStatus = document.getElementById('token-status');
+  const tokenInput = document.getElementById('token-input');
+  const tokenSaveBtn = document.getElementById('token-save-btn');
+  const tokenClearBtn = document.getElementById('token-clear-btn');
+  const tokenSection = document.getElementById('token-section');
+  const getTokenBtn = document.getElementById('get-token-btn');
+
+  function refreshTokenStatus() {
+    chrome.storage.local.get(['yamToken', 'yamTokenSource'], (d) => {
+      if (d?.yamToken) {
+        const src = d.yamTokenSource ? ` (${d.yamTokenSource.slice(0, 30)})` : '';
+        tokenStatus.textContent = '✓ Токен Я.Музыки установлен' + src;
+        tokenStatus.className = 'token-status ok';
+      } else {
+        tokenStatus.textContent = '⚠ Токен Я.Музыки не установлен';
+        tokenStatus.className = 'token-status warn';
+        // Раскрыть секцию автоматически если токена нет
+        tokenSection.open = true;
+      }
+    });
+  }
+  refreshTokenStatus();
+
+  getTokenBtn?.addEventListener('click', () => {
+    chrome.tabs.create({ url: OAUTH_URL });
+  });
+
+  tokenSaveBtn?.addEventListener('click', () => {
+    const t = (tokenInput.value || '').trim();
+    if (!t) { showStatus('Токен пустой', 'error'); return; }
+    if (!/^[A-Za-z0-9_\-]{20,}$/.test(t)) {
+      showStatus('Формат токена не похож на правильный', 'error');
+      return;
+    }
+    chrome.storage.local.set({ yamToken: t, yamTokenSource: 'manual', yamTokenAt: Date.now() }, () => {
+      tokenInput.value = '';
+      refreshTokenStatus();
+      showStatus('✓ Токен сохранён', 'success');
+    });
+  });
+
+  tokenClearBtn?.addEventListener('click', () => {
+    chrome.storage.local.remove(['yamToken', 'yamTokenSource', 'yamTokenAt'], () => {
+      refreshTokenStatus();
+      showStatus('Токен удалён', 'info');
+    });
+  });
+
   function typeLabel(type) {
     switch (type) {
       case 'track': return 'трек';
