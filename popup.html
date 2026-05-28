@@ -57,7 +57,31 @@
       <input type="checkbox" id="save-as-toggle" class="toggle-check">
     </div>
 
-    <div class="footer">v3.0 · Я.Музыка · Bandcamp · SoundCloud</div>
+    <details class="token-section" id="token-section">
+      <summary>
+        <span id="token-status" class="token-status">⚠ Токен Я.Музыки не установлен</span>
+      </summary>
+      <div class="token-body">
+        <p class="token-hint">
+          С мая 2026 Я.Музыка снесла старый веб-API. Чтобы скачивание работало,
+          нужен <b>OAuth-токен</b>. Если ты залогинен на music.yandex.ru, расширение
+          попробует поймать его автоматом — обнови страницу. Не получилось — вставь вручную:
+        </p>
+        <button id="get-token-btn" class="token-link-btn">Открыть страницу для получения токена</button>
+        <p class="token-hint-small">
+          После клика откроется страница Яндекса. Залогинься (если надо), разреши доступ.
+          Тебя перебросит на <code>music.yandex.ru/#access_token=...</code> — скопируй значение между
+          <code>access_token=</code> и <code>&amp;</code>, вставь сюда.
+        </p>
+        <input type="text" id="token-input" placeholder="вставь токен сюда" autocomplete="off" spellcheck="false">
+        <div class="token-actions">
+          <button id="token-save-btn" class="token-save-btn">Сохранить</button>
+          <button id="token-clear-btn" class="token-clear-btn">Очистить</button>
+        </div>
+      </div>
+    </details>
+
+    <div class="footer">v3.2 · Я.Музыка · Bandcamp · SoundCloud</div>
   </div>
 
   <script src="popup.js"></script>

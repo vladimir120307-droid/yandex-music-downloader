@@ -1,7 +1,14 @@
-// Yandex Music adapter
+// Yandex Music adapter — api.music.yandex.net (новый API после смерти /handlers/*.jsx)
+//
+// Аутентификация: OAuth-токен. Берётся из chrome.storage.local.yamToken.
+// Токен попадает туда либо автоматически (грабер на странице music.yandex.ru,
+// см. content.js → tryGrabYandexToken), либо вручную (попап → поле «Токен»).
+//
+// Без токена работает только получение метаданных (албом/треки) — для скачивания
+// нужен токен, потому что /tracks/{id}/download-info требует авторизации.
 (function () {
+  const API_BASE = 'https://api.music.yandex.net';
   const SIGN_SALT = 'XGRlBW9FXlekgbPrRHuSiA';
-  const DEFAULT_ORIGIN = 'https://music.yandex.ru';
   const DOMAINS = [
     'music.yandex.ru', 'music.yandex.com', 'music.yandex.kz',
     'music.yandex.by', 'music.yandex.ua',
@@ -12,134 +19,97 @@
     if (!DOMAINS.some(d => u.hostname === d || u.hostname.endsWith('.' + d))) return null;
     const p = u.pathname;
     let m = p.match(/\/album\/(\d+)\/track\/(\d+)/);
-    if (m) return { type: 'track', albumId: m[1], trackId: m[2], origin: u.origin };
+    if (m) return { type: 'track', albumId: m[1], trackId: m[2] };
     m = p.match(/\/track\/(\d+)/);
-    if (m) return { type: 'track', albumId: null, trackId: m[1], origin: u.origin };
+    if (m) return { type: 'track', albumId: null, trackId: m[1] };
     m = p.match(/\/album\/(\d+)/);
-    if (m) return { type: 'album', albumId: m[1], origin: u.origin };
+    if (m) return { type: 'album', albumId: m[1] };
     m = p.match(/\/users\/([^/]+)\/playlists\/(\d+)/);
-    if (m) return { type: 'playlist', owner: m[1], kinds: m[2], origin: u.origin };
+    if (m) return { type: 'playlist', owner: m[1], kinds: m[2] };
     return null;
   }
 
-  async function fetchAlbumTracks(albumId, origin) {
-    const resp = await fetch(`${origin}/handlers/album/${albumId}/full.jsx`, {
-      credentials: 'include', headers: { 'X-Retpath-Y': origin + '/' },
+  async function getToken() {
+    return new Promise(resolve => {
+      try {
+        chrome.storage.local.get('yamToken', d => resolve((d && d.yamToken) || ''));
+      } catch { resolve(''); }
     });
-    if (!resp.ok) throw new Error('Не удалось получить треки альбома');
+  }
+
+  function authHeaders(token) {
+    const h = { 'Accept': 'application/json' };
+    if (token) h['Authorization'] = 'OAuth ' + token;
+    return h;
+  }
+
+  async function apiGet(path, token) {
+    const resp = await fetch(API_BASE + path, { headers: authHeaders(token) });
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => '');
+      throw new Error(`api.music.yandex.net${path}: HTTP ${resp.status} ${txt.slice(0, 200)}`);
+    }
     const data = await resp.json();
+    return data.result !== undefined ? data.result : data;
+  }
+
+  async function apiPost(path, body, token) {
+    const headers = authHeaders(token);
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    const resp = await fetch(API_BASE + path, { method: 'POST', headers, body });
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => '');
+      throw new Error(`api.music.yandex.net${path}: HTTP ${resp.status} ${txt.slice(0, 200)}`);
+    }
+    const data = await resp.json();
+    return data.result !== undefined ? data.result : data;
+  }
+
+  function shapeTrack(t, defaultAlbumId) {
+    return {
+      trackId: String(t.id || t.realId || ''),
+      albumId: String(((t.albums || [])[0] || {}).id || defaultAlbumId || ''),
+      title: t.title || '',
+      artist: (t.artists || []).map(a => a.name).filter(Boolean).join(', '),
+      version: t.version || '',
+    };
+  }
+
+  async function fetchAlbumTracks(albumId, token) {
+    const data = await apiGet(`/albums/${albumId}/with-tracks`, token);
     const out = [];
     for (const vol of (data.volumes || [])) {
       for (const t of vol) {
-        out.push({
-          trackId: String(t.id),
-          albumId: String(t.albums?.[0]?.id || albumId),
-          title: t.title || '',
-          artist: (t.artists || []).map(a => a.name).join(', ') || '',
-          origin,
-        });
+        const tr = shapeTrack(t, albumId);
+        if (tr.trackId) out.push(tr);
       }
     }
     return out;
   }
 
-  async function fetchPlaylistTracks(owner, kinds, origin) {
-    const resp = await fetch(`${origin}/handlers/playlist/${owner}/${kinds}/full.jsx`, {
-      credentials: 'include', headers: { 'X-Retpath-Y': origin + '/' },
-    });
-    if (!resp.ok) throw new Error('Не удалось получить треки плейлиста');
-    const data = await resp.json();
-    const pl = data.playlist || data;
-    return (pl.tracks || []).map(t => {
-      const tr = t.track || t;
-      return {
-        trackId: String(tr.id),
-        albumId: String(tr.albums?.[0]?.id || ''),
-        title: tr.title || '',
-        artist: (tr.artists || []).map(a => a.name).join(', ') || '',
-        origin,
-      };
-    }).filter(t => t.trackId);
+  async function fetchPlaylistTracks(owner, kinds, token) {
+    const pl = await apiGet(`/users/${owner}/playlists/${kinds}`, token);
+    const items = pl.tracks || [];
+    return items.map(entry => shapeTrack(entry.track || entry)).filter(t => t.trackId);
   }
 
-  async function fetchSingleTrack(trackId, albumId, origin) {
-    if (albumId) {
-      try {
-        const all = await fetchAlbumTracks(albumId, origin);
-        const found = all.find(t => t.trackId === String(trackId));
-        if (found) return found;
-      } catch { /* fall through */ }
-    }
-    try {
-      const resp = await fetch(`${origin}/handlers/track.jsx?track=${trackId}${albumId ? ':' + albumId : ''}`, {
-        credentials: 'include', headers: { 'X-Retpath-Y': origin + '/' },
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        const tr = data.track || data;
-        return {
-          trackId: String(trackId),
-          albumId: String(tr.albums?.[0]?.id || albumId || ''),
-          title: tr.title || '',
-          artist: (tr.artists || []).map(a => a.name).join(', ') || '',
-          origin,
-        };
-      }
-    } catch { /* fall through */ }
-    return { trackId: String(trackId), albumId: albumId ? String(albumId) : '', title: '', artist: '', origin };
+  async function fetchSingleTrack(trackId, albumId, token) {
+    const list = await apiPost('/tracks', 'track-ids=' + encodeURIComponent(trackId), token);
+    const t = (list || [])[0];
+    if (t) return shapeTrack(t, albumId);
+    return { trackId: String(trackId), albumId: albumId || '', title: '', artist: '' };
   }
 
   async function listTracks(parsed) {
-    const origin = parsed.origin || DEFAULT_ORIGIN;
-    if (parsed.type === 'track') return [await fetchSingleTrack(parsed.trackId, parsed.albumId, origin)];
-    if (parsed.type === 'album') return await fetchAlbumTracks(parsed.albumId, origin);
-    if (parsed.type === 'playlist') return await fetchPlaylistTracks(parsed.owner, parsed.kinds, origin);
+    const token = await getToken();
+    if (parsed.type === 'track') return [await fetchSingleTrack(parsed.trackId, parsed.albumId, token)];
+    if (parsed.type === 'album') return await fetchAlbumTracks(parsed.albumId, token);
+    if (parsed.type === 'playlist') return await fetchPlaylistTracks(parsed.owner, parsed.kinds, token);
     return [];
   }
 
-  async function resolveXmlToMp3(xmlUrl) {
-    let url = xmlUrl;
-    if (!url.includes('format=')) url += (url.includes('?') ? '&' : '?') + 'format=json';
-    const resp = await fetch(url, { credentials: 'include' });
-    if (!resp.ok) return null;
-    const text = await resp.text();
-    let host, path, ts, s;
-    try {
-      const json = JSON.parse(text);
-      host = json.host; path = json.path; ts = json.ts; s = json.s;
-    } catch {
-      host = text.match(/<host>(.*?)<\/host>/)?.[1];
-      path = text.match(/<path>(.*?)<\/path>/)?.[1];
-      ts = text.match(/<ts>(.*?)<\/ts>/)?.[1];
-      s = text.match(/<s>(.*?)<\/s>/)?.[1];
-    }
-    if (!host || !path) return null;
-    const sign = globalThis.YMD_MD5(SIGN_SALT + path.substring(1) + s);
-    return `https://${host}/get-mp3/${sign}/${ts}${path}`;
-  }
-
-  async function getApiDownloadUrl(trackId, albumId, origin) {
-    const endpoints = [];
-    if (albumId) endpoints.push(`${origin}/api/v2.1/handlers/track/${trackId}:${albumId}/web-album_track-track-track-main/download/m?hq=1&external-domain=${new URL(origin).hostname}&overembed=no`);
-    endpoints.push(`${origin}/api/v2.1/handlers/track/${trackId}/web-album_track-track-track-main/download/m?hq=1&external-domain=${new URL(origin).hostname}&overembed=no`);
-    for (const ep of endpoints) {
-      try {
-        const resp = await fetch(ep, { credentials: 'include', headers: { 'X-Retpath-Y': origin + '/' } });
-        if (!resp.ok) continue;
-        const data = await resp.json();
-        const xmlUrl = data.src || data.result?.src;
-        if (!xmlUrl) continue;
-        const mp3 = await resolveXmlToMp3(xmlUrl);
-        if (mp3) return mp3;
-      } catch { /* next */ }
-    }
-    return null;
-  }
-
   async function getAudioUrl(track, ctx) {
-    const origin = track.origin || DEFAULT_ORIGIN;
-
-    // In-page mode: try captured URL first (only valid for currently playing track)
+    // 1. Try captured URL (in-page mode — наш фоновый webRequest перехватчик)
     if (ctx?.preferCaptured && ctx.getCapturedAudio) {
       try {
         const captured = await ctx.getCapturedAudio();
@@ -147,7 +117,41 @@
       } catch { /* fall through */ }
     }
 
-    return await getApiDownloadUrl(track.trackId, track.albumId, origin);
+    // 2. API-путь через api.music.yandex.net + OAuth токен
+    const token = await getToken();
+    if (!token) {
+      throw new Error(
+        'Нет токена Я.Музыки. Зайди на music.yandex.ru (расширение попробует поймать ' +
+        'токен автоматически) или вставь вручную в попапе → «Токен».'
+      );
+    }
+
+    const dlInfo = await apiGet(`/tracks/${track.trackId}/download-info`, token);
+    if (!Array.isArray(dlInfo) || !dlInfo.length) throw new Error('Я.Музыка не вернула download-info');
+    // Лучшее качество mp3
+    const mp3s = dlInfo.filter(i => i.codec === 'mp3');
+    const pick = (mp3s.length ? mp3s : dlInfo).reduce((a, b) =>
+      (b.bitrateInKbps || 0) > (a.bitrateInKbps || 0) ? b : a, dlInfo[0]);
+
+    const sep = pick.downloadInfoUrl.includes('?') ? '&' : '?';
+    const xmlResp = await fetch(pick.downloadInfoUrl + sep + 'format=json', {
+      headers: authHeaders(token),
+    });
+    if (!xmlResp.ok) throw new Error(`downloadInfoUrl: HTTP ${xmlResp.status}`);
+    const txt = await xmlResp.text();
+    let host, path, ts, s;
+    try {
+      const j = JSON.parse(txt);
+      host = j.host; path = j.path; ts = j.ts; s = j.s;
+    } catch {
+      host = txt.match(/<host>(.*?)<\/host>/)?.[1];
+      path = txt.match(/<path>(.*?)<\/path>/)?.[1];
+      ts = txt.match(/<ts>(.*?)<\/ts>/)?.[1];
+      s = txt.match(/<s>(.*?)<\/s>/)?.[1];
+    }
+    if (!host || !path || s == null || ts == null) return null;
+    const sign = globalThis.YMD_MD5(SIGN_SALT + path.substring(1) + s);
+    return `https://${host}/get-mp3/${sign}/${ts}${path}`;
   }
 
   globalThis.YMD.registry.register({

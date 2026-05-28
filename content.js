@@ -325,7 +325,32 @@
     }, 500);
   }
 
-  console.log('[YMD] v3.0 loaded');
+  // ═══════════════════════════════════════
+  // YANDEX MUSIC TOKEN AUTO-GRAB
+  // ═══════════════════════════════════════
+  // Я.Музыка снесла свой web-API в 2026 — теперь API на api.music.yandex.net
+  // требует OAuth-токен. Если юзер залогинен на music.yandex.ru, токен можно
+  // достать из state-снапшота страницы / localStorage. Если не получилось —
+  // пользователь вводит токен вручную в попапе.
+
+  async function autoGrabTokenOnce() {
+    try {
+      const existing = await new Promise(r => chrome.storage.local.get('yamToken', d => r((d && d.yamToken) || '')));
+      if (existing) return; // уже есть, не перезаписываем без необходимости
+    } catch {}
+    // Дать странице время отрендериться и засунуть токен в state.
+    // Background выполнит скан в MAIN world через chrome.scripting (минует CSP).
+    await sleep(1500);
+    try {
+      chrome.runtime.sendMessage({ action: 'grabYamToken' }, (resp) => {
+        if (chrome.runtime.lastError) return;
+        if (resp?.token) console.log('[YMD] grabbed Yandex Music token from', resp.source);
+      });
+    } catch {}
+  }
+
+  console.log('[YMD] v3.2 loaded');
   createFAB();
   start();
+  autoGrabTokenOnce();
 })();

@@ -190,6 +190,99 @@ body {
 .toggle-check:checked { background: rgba(255, 219, 77, 0.35); }
 .toggle-check:checked::before { left: 18px; background: #ffdb4d; }
 
+.token-section {
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.token-section > summary {
+  cursor: pointer;
+  padding: 9px 12px;
+  list-style: none;
+  font-size: 11px;
+  user-select: none;
+}
+.token-section > summary::-webkit-details-marker { display: none; }
+.token-section > summary::before {
+  content: '▸';
+  margin-right: 6px;
+  color: rgba(255, 255, 255, 0.4);
+  transition: transform 0.15s;
+  display: inline-block;
+}
+.token-section[open] > summary::before { transform: rotate(90deg); }
+
+.token-status.ok { color: #4caf50; }
+.token-status.warn { color: #ffb74d; }
+
+.token-body { padding: 10px 12px 12px; border-top: 1px solid rgba(255, 255, 255, 0.05); }
+
+.token-hint, .token-hint-small {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.token-hint-small { font-size: 10px; }
+.token-hint code, .token-hint-small code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+  font-size: 10px;
+}
+
+.token-link-btn {
+  width: 100%;
+  padding: 7px 10px;
+  background: rgba(255, 219, 77, 0.12);
+  color: #ffdb4d;
+  border: 1px solid rgba(255, 219, 77, 0.3);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 8px;
+  font-family: inherit;
+}
+.token-link-btn:hover { background: rgba(255, 219, 77, 0.2); }
+
+#token-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 11px;
+  padding: 7px 10px;
+  outline: none;
+  font-family: 'Consolas', monospace;
+  margin-bottom: 6px;
+}
+#token-input:focus { border-color: rgba(255, 219, 77, 0.4); }
+
+.token-actions { display: flex; gap: 6px; }
+.token-save-btn, .token-clear-btn {
+  flex: 1;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.token-save-btn { background: #ffdb4d; color: #1a1a2e; }
+.token-save-btn:hover { background: #ffe87d; }
+.token-clear-btn {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.5);
+}
+.token-clear-btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
 .footer {
   margin-top: 12px;
   text-align: center;
