@@ -326,31 +326,35 @@
   }
 
   // ═══════════════════════════════════════
-  // YANDEX MUSIC TOKEN AUTO-GRAB
+  // YANDEX MUSIC TOKEN AUTO-CAPTURE
   // ═══════════════════════════════════════
-  // Я.Музыка снесла свой web-API в 2026 — теперь API на api.music.yandex.net
-  // требует OAuth-токен. Если юзер залогинен на music.yandex.ru, токен можно
-  // достать из state-снапшота страницы / localStorage. Если не получилось —
-  // пользователь вводит токен вручную в попапе.
+  // Я.Музыка снесла свой старый веб-API в 2026 — теперь API на api.music.yandex.net
+  // требует OAuth-токен. inject/yam-fetch-hook.js (MAIN world, document_start)
+  // оборачивает fetch+XHR на странице, перехватывает Authorization-токен из
+  // реальных вызовов залогиненного юзера и шлёт сюда через postMessage.
 
-  async function autoGrabTokenOnce() {
-    try {
-      const existing = await new Promise(r => chrome.storage.local.get('yamToken', d => r((d && d.yamToken) || '')));
-      if (existing) return; // уже есть, не перезаписываем без необходимости
-    } catch {}
-    // Дать странице время отрендериться и засунуть токен в state.
-    // Background выполнит скан в MAIN world через chrome.scripting (минует CSP).
-    await sleep(1500);
-    try {
-      chrome.runtime.sendMessage({ action: 'grabYamToken' }, (resp) => {
-        if (chrome.runtime.lastError) return;
-        if (resp?.token) console.log('[YMD] grabbed Yandex Music token from', resp.source);
-      });
-    } catch {}
+  function setupTokenListener() {
+    window.addEventListener('message', (e) => {
+      if (e.source !== window) return;
+      const d = e.data;
+      if (!d || d.type !== 'ymd-yam-fetch-token' || !d.token) return;
+      try {
+        chrome.storage.local.get(['yamToken'], (cur) => {
+          if (cur && cur.yamToken === d.token) return;
+          chrome.storage.local.set({
+            yamToken: d.token,
+            yamTokenSource: 'fetch-hook:' + (d.source || ''),
+            yamTokenAt: Date.now(),
+          }, () => {
+            console.log('[YMD] auto-captured Yandex Music token (', d.source, ')');
+          });
+        });
+      } catch {}
+    }, false);
   }
 
-  console.log('[YMD] v3.2 loaded');
+  console.log('[YMD] v3.2.1 loaded');
+  setupTokenListener();
   createFAB();
   start();
-  autoGrabTokenOnce();
 })();

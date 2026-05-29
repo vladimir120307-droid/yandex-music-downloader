@@ -26,6 +26,9 @@
     if (m) return { type: 'album', albumId: m[1] };
     m = p.match(/\/users\/([^/]+)\/playlists\/(\d+)/);
     if (m) return { type: 'playlist', owner: m[1], kinds: m[2] };
+    // Новый формат: /playlists/{uuid}  (например 01a6eb8c-578e-8e47-b4b4-bab9aae9da0b)
+    m = p.match(/\/playlists\/([a-f0-9-]{32,40})/i);
+    if (m) return { type: 'playlist', uuid: m[1] };
     return null;
   }
 
@@ -93,6 +96,12 @@
     return items.map(entry => shapeTrack(entry.track || entry)).filter(t => t.trackId);
   }
 
+  async function fetchPlaylistByUuid(uuid, token) {
+    const pl = await apiGet(`/playlist/${uuid}`, token);
+    const items = pl.tracks || [];
+    return items.map(entry => shapeTrack(entry.track || entry)).filter(t => t.trackId);
+  }
+
   async function fetchSingleTrack(trackId, albumId, token) {
     const list = await apiPost('/tracks', 'track-ids=' + encodeURIComponent(trackId), token);
     const t = (list || [])[0];
@@ -104,7 +113,10 @@
     const token = await getToken();
     if (parsed.type === 'track') return [await fetchSingleTrack(parsed.trackId, parsed.albumId, token)];
     if (parsed.type === 'album') return await fetchAlbumTracks(parsed.albumId, token);
-    if (parsed.type === 'playlist') return await fetchPlaylistTracks(parsed.owner, parsed.kinds, token);
+    if (parsed.type === 'playlist') {
+      if (parsed.uuid) return await fetchPlaylistByUuid(parsed.uuid, token);
+      return await fetchPlaylistTracks(parsed.owner, parsed.kinds, token);
+    }
     return [];
   }
 
@@ -133,12 +145,19 @@
     const pick = (mp3s.length ? mp3s : dlInfo).reduce((a, b) =>
       (b.bitrateInKbps || 0) > (a.bitrateInKbps || 0) ? b : a, dlInfo[0]);
 
+    // storage.mds.yandex.net не отдаёт CORS — fetch через background.
     const sep = pick.downloadInfoUrl.includes('?') ? '&' : '?';
-    const xmlResp = await fetch(pick.downloadInfoUrl + sep + 'format=json', {
-      headers: authHeaders(token),
+    const proxyUrl = pick.downloadInfoUrl + sep + 'format=json';
+    const txt = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { action: 'corsProxyFetch', url: proxyUrl, headers: {} },
+        (resp) => {
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          if (!resp || !resp.ok) return reject(new Error(resp?.error || 'corsProxyFetch failed'));
+          resolve(resp.body || '');
+        }
+      );
     });
-    if (!xmlResp.ok) throw new Error(`downloadInfoUrl: HTTP ${xmlResp.status}`);
-    const txt = await xmlResp.text();
     let host, path, ts, s;
     try {
       const j = JSON.parse(txt);

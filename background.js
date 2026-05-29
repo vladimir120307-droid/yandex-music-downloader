@@ -23,7 +23,7 @@ chrome.webRequest.onBeforeRequest.addListener(
     const url = details.url;
     const isAudio = AUDIO_PATTERNS.some(p => url.includes(p)) ||
       url.match(/\.(mp3|aac|m4a|opus|ogg)(\?|$)/i) ||
-      (url.includes('storage.mds.yandex.net') && AUDIO_TYPES.includes(details.type));
+      ((url.includes('storage.mds.yandex.net') || url.includes('storage.yandex.net')) && AUDIO_TYPES.includes(details.type));
     if (!isAudio) return;
     const tabId = details.tabId;
     if (tabId < 0) return;
@@ -31,7 +31,16 @@ chrome.webRequest.onBeforeRequest.addListener(
     capturedAudio[tabId].unshift({ url, timestamp: Date.now() });
     if (capturedAudio[tabId].length > 20) capturedAudio[tabId] = capturedAudio[tabId].slice(0, 20);
   },
-  { urls: ['*://*.storage.mds.yandex.net/*', '*://storage.mds.yandex.net/*', '*://*.strm.yandex.net/*'], types: ['media', 'xmlhttprequest', 'other'] }
+  {
+    urls: [
+      '*://*.storage.mds.yandex.net/*',
+      '*://storage.mds.yandex.net/*',
+      '*://*.strm.yandex.net/*',
+      '*://*.storage.yandex.net/*',
+      '*://storage.yandex.net/*',
+    ],
+    types: ['media', 'xmlhttprequest', 'other'],
+  }
 );
 
 chrome.tabs.onRemoved.addListener((tabId) => { delete capturedAudio[tabId]; });
@@ -163,6 +172,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         else sendResponse(resp || { success: false });
       });
     });
+    return true;
+  }
+
+  if (message.action === 'corsProxyFetch') {
+    // Кросс-доменный fetch из background (host_permissions обходят CORS).
+    // Используется для storage.mds.yandex.net и подобных хостов которые не дают CORS.
+    const url = message.url;
+    const headers = message.headers || {};
+    fetch(url, { headers })
+      .then(async (r) => {
+        const body = await r.text();
+        if (!r.ok) sendResponse({ ok: false, error: `HTTP ${r.status}`, status: r.status, body });
+        else sendResponse({ ok: true, status: r.status, body });
+      })
+      .catch(e => sendResponse({ ok: false, error: e.message || String(e) }));
     return true;
   }
 

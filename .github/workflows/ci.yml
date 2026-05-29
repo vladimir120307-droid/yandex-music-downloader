@@ -23,7 +23,7 @@ jobs:
       - name: Syntax-check JS files
         run: |
           set -e
-          for f in background.js content.js popup.js lib/*.js services/*.js; do
+          for f in background.js content.js popup.js lib/*.js services/*.js inject/*.js; do
             echo "checking $f"
             node --check "$f"
           done
