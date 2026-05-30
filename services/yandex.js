@@ -180,36 +180,46 @@
   }
 
   async function getAudioUrl(track, ctx) {
-    // 1. Try captured URL (in-page mode — наш фоновый webRequest перехватчик)
+    const quality = await getQualityPref();
+    const token = await getToken();
+
+    // С токеном — ВСЕГДА API-путь, чтобы получить именно выбранное качество.
+    // Captured URL (что плеер уже скачал) — это качество ПЛЕЕРА, не наше.
+    // Если юзер выбрал FLAC, а плеер играл 320 — captured даст 320, не FLAC.
+    if (token) {
+      const dlInfo = await apiGet(`/tracks/${track.trackId}/download-info`, token);
+      if (!Array.isArray(dlInfo) || !dlInfo.length) throw new Error('Я.Музыка не вернула download-info');
+
+      const pick = pickStream(dlInfo, quality);
+      if (!pick) throw new Error('Я.Музыка: подходящий поток не найден');
+      track._codec = pick.codec;
+      track._bitrate = pick.bitrateInKbps;
+      return await resolveDownloadInfoUrl(pick.downloadInfoUrl);
+    }
+
+    // Без токена — фоллбек на captured URL (FAB при заходе на свежую страницу
+    // когда токен ещё не пойман). Качество — какое играл плеер.
     if (ctx?.preferCaptured && ctx.getCapturedAudio) {
       try {
         const captured = await ctx.getCapturedAudio();
-        if (captured) return captured;
+        if (captured) {
+          // Не знаем реальный codec — ставим mp3 как наиболее вероятный.
+          track._codec = track._codec || 'mp3';
+          return captured;
+        }
       } catch { /* fall through */ }
     }
 
-    // 2. API-путь через api.music.yandex.net + OAuth токен
-    const token = await getToken();
-    if (!token) {
-      throw new Error(
-        'Нет токена Я.Музыки. Зайди на music.yandex.ru (расширение попробует поймать ' +
-        'токен автоматически) или вставь вручную в попапе → «Токен».'
-      );
-    }
+    throw new Error(
+      'Нет токена Я.Музыки. Открой music.yandex.ru и залогинься — расширение ' +
+      'поймает токен автоматически. Или вставь вручную в попапе → «Токен Я.Музыки».'
+    );
+  }
 
-    const dlInfo = await apiGet(`/tracks/${track.trackId}/download-info`, token);
-    if (!Array.isArray(dlInfo) || !dlInfo.length) throw new Error('Я.Музыка не вернула download-info');
-
-    const quality = await getQualityPref();
-    const pick = pickStream(dlInfo, quality);
-    if (!pick) throw new Error('Я.Музыка: подходящий поток не найден');
-    // Запоминаем codec на треке, чтоб getFilename выбрал правильное расширение
-    track._codec = pick.codec;
-    track._bitrate = pick.bitrateInKbps;
-
+  async function resolveDownloadInfoUrl(downloadInfoUrl) {
     // storage.mds.yandex.net не отдаёт CORS — fetch через background.
-    const sep = pick.downloadInfoUrl.includes('?') ? '&' : '?';
-    const proxyUrl = pick.downloadInfoUrl + sep + 'format=json';
+    const sep = downloadInfoUrl.includes('?') ? '&' : '?';
+    const proxyUrl = downloadInfoUrl + sep + 'format=json';
     const txt = await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         { action: 'corsProxyFetch', url: proxyUrl, headers: {} },
