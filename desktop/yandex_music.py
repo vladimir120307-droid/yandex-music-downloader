@@ -155,15 +155,62 @@ def _fetch_single_track(track_id: str, album_id: Optional[str], token: Optional[
     return {'trackId': str(track_id), 'albumId': album_id or '', 'title': '', 'artist': ''}
 
 
+# ─────────────────────── Quality selection ───────────────────────
+
+def _ext_for_codec(codec: str) -> str:
+    c = (codec or '').lower()
+    if c == 'flac':
+        return 'flac'
+    if c in ('aac', 'he-aac'):
+        return 'aac'
+    if c == 'opus':
+        return 'opus'
+    return 'mp3'
+
+
+def _pick_stream(dl_info: list, quality: str) -> Optional[dict]:
+    if not dl_info:
+        return None
+    by_br_desc = lambda x: -(x.get('bitrateInKbps') or 0)
+    by_br_asc = lambda x: x.get('bitrateInKbps') or 0
+
+    if quality == 'smallest':
+        return min(dl_info, key=by_br_asc)
+    if quality in ('auto', '', None):
+        for i in dl_info:
+            if i.get('codec') == 'flac':
+                return i
+        mp3_320 = next((i for i in dl_info if i.get('codec') == 'mp3' and i.get('bitrateInKbps') == 320), None)
+        if mp3_320:
+            return mp3_320
+        return min(dl_info, key=by_br_desc)
+    if quality == 'flac':
+        flac = next((i for i in dl_info if i.get('codec') == 'flac'), None)
+        return flac if flac else min(dl_info, key=by_br_desc)
+
+    m = re.match(r'^([a-z]+)-(\d+)$', quality, re.I)
+    if m:
+        codec = m.group(1).lower()
+        target = int(m.group(2))
+        exact = next((i for i in dl_info if i.get('codec') == codec and i.get('bitrateInKbps') == target), None)
+        if exact:
+            return exact
+        same = [i for i in dl_info if i.get('codec') == codec]
+        if same:
+            return min(same, key=lambda i: abs((i.get('bitrateInKbps') or 0) - target))
+    return min(dl_info, key=by_br_desc)
+
+
 # ─────────────────────── Audio URL resolution ───────────────────────
 
-def _resolve_audio_url(track: dict, token: str) -> Optional[str]:
+def _resolve_audio_url(track: dict, token: str, quality: str = 'auto') -> Optional[tuple]:
+    """Returns (url, codec) or None."""
     dl_info = _api_get(f"/tracks/{track['trackId']}/download-info", token)
     if not isinstance(dl_info, list) or not dl_info:
         return None
-    mp3s = [i for i in dl_info if i.get('codec') == 'mp3']
-    pool = mp3s if mp3s else dl_info
-    pick = max(pool, key=lambda i: i.get('bitrateInKbps', 0))
+    pick = _pick_stream(dl_info, quality)
+    if not pick:
+        return None
     info_url = pick['downloadInfoUrl']
     info_url += ('&' if '?' in info_url else '?') + 'format=json'
     req = urllib.request.Request(info_url, headers=_headers(None))  # storage.mds.* без авторизации
@@ -180,7 +227,7 @@ def _resolve_audio_url(track: dict, token: str) -> Optional[str]:
     if not host or not path or s is None or ts is None:
         return None
     sign = hashlib.md5((SIGN_SALT + path[1:] + s).encode('utf-8')).hexdigest()
-    return f'https://{host}/get-mp3/{sign}/{ts}{path}'
+    return (f'https://{host}/get-mp3/{sign}/{ts}{path}', pick.get('codec', 'mp3'))
 
 
 # ─────────────────────── Public entry point ───────────────────────
@@ -190,7 +237,8 @@ def download(url: str,
              token: Optional[str],
              info_cb: Callable[[dict], None],
              progress_cb: Callable[[dict], None],
-             cancel_check: Callable[[], bool]) -> str:
+             cancel_check: Callable[[], bool],
+             quality: str = 'auto') -> str:
     if cancel_check():
         raise YMCancelled()
 
@@ -211,7 +259,7 @@ def download(url: str,
                 'Я.Музыка требует OAuth-токен для скачивания (download-info → 403). '
                 'Получите токен: ' + OAUTH_URL + ' и вставьте в поле «Я.Музыка токен».'
             )
-        return str(_download_one(track, Path(output_dir), token, progress_cb, cancel_check))
+        return str(_download_one(track, Path(output_dir), token, progress_cb, cancel_check, quality))
 
     # Album / playlist (batch)
     if parsed['type'] == 'album':
@@ -260,7 +308,7 @@ def download(url: str,
         progress_cb({'status': 'downloading', 'message': label,
                      'batch_current': i, 'batch_total': total})
         try:
-            p = _download_one(t, out_dir, token, progress_cb, cancel_check)
+            p = _download_one(t, out_dir, token, progress_cb, cancel_check, quality)
             last_path = str(p)
         except YMCancelled:
             raise
@@ -271,16 +319,19 @@ def download(url: str,
 
 
 def _download_one(track: dict, out_dir: Path, token: str,
-                  progress_cb: Callable, cancel_check: Callable) -> Path:
+                  progress_cb: Callable, cancel_check: Callable,
+                  quality: str = 'auto') -> Path:
     if cancel_check():
         raise YMCancelled()
-    audio_url = _resolve_audio_url(track, token)
-    if not audio_url:
+    result = _resolve_audio_url(track, token, quality)
+    if not result:
         raise RuntimeError(f'Я.Музыка: нет audio URL для трека {track["trackId"]}')
+    audio_url, codec = result
+    ext = _ext_for_codec(codec)
 
     artist = _sanitize(track.get('artist', ''))
     title = _sanitize(track.get('title', '')) or f"track_{track['trackId']}"
-    name = f'{artist} - {title}.mp3' if artist else f'{title}.mp3'
+    name = f'{artist} - {title}.{ext}' if artist else f'{title}.{ext}'
     out_path = out_dir / name
     out_dir.mkdir(parents=True, exist_ok=True)
 

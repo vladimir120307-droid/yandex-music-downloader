@@ -21,6 +21,15 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.set({ saveAs: saveAsToggle.checked });
   });
 
+  // ═══ Quality selector ═══
+  const qualitySelect = document.getElementById('quality-select');
+  chrome.storage.local.get('yamQuality', (data) => {
+    qualitySelect.value = (data && data.yamQuality) || 'auto';
+  });
+  qualitySelect.addEventListener('change', () => {
+    chrome.storage.local.set({ yamQuality: qualitySelect.value });
+  });
+
   // ═══ Current track (Yandex only, via content script) ═══
   chrome.runtime.sendMessage({ action: 'getCurrentTrack' }, (resp) => {
     if (chrome.runtime.lastError) return;

@@ -49,6 +49,33 @@
       <div id="progress-text" class="progress-text">—</div>
     </div>
 
+    <div class="setting-row quality-row">
+      <label class="toggle-label" for="quality-select">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        Качество <span class="muted">(Я.Музыка)</span>
+      </label>
+      <select id="quality-select" class="quality-select">
+        <option value="auto">Авто — FLAC → MP3 320</option>
+        <option value="flac">FLAC (lossless, Я.Плюс)</option>
+        <option value="mp3-320">MP3 320 kbps</option>
+        <option value="mp3-192">MP3 192 kbps</option>
+        <option value="aac-256">AAC 256 kbps</option>
+        <option value="aac-128">AAC 128 kbps</option>
+        <option value="smallest">Минимальный размер</option>
+      </select>
+    </div>
+    <details class="quality-help">
+      <summary>что выбрать?</summary>
+      <div class="quality-help-body">
+        <p><b>Авто</b> — лучшее доступное. FLAC если у тебя Я.Плюс и у трека есть lossless, иначе MP3 320. Рекомендую большинству.</p>
+        <p><b>FLAC</b> — lossless, ~30-50 МБ. Только для Плюс-подписки. Слышно разницу на хороших наушниках/колонках.</p>
+        <p><b>MP3 320</b> — ~10 МБ, звучит как FLAC на обычных колонках. Универсал.</p>
+        <p><b>MP3 192</b> — ~7 МБ, для телефона/фона.</p>
+        <p><b>AAC 256</b> — лучше MP3 на том же битрейте. Apple-стандарт.</p>
+        <p><b>Минимальный</b> — самое маленькое из доступного.</p>
+      </div>
+    </details>
+
     <div class="setting-row">
       <label class="toggle-label" for="save-as-toggle">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>

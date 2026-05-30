@@ -116,17 +116,15 @@
   async function downloadCurrentTrack() {
     const info = getCurrentPlayerInfo();
     if (!info.trackId) { showNotification('Включите трек', 'error'); return { success: false, error: 'Нет трека' }; }
-    const fn = (info.artist && info.title)
-      ? `${sanitize(info.artist)} - ${sanitize(info.title)}.mp3`
-      : `track_${info.trackId}.mp3`;
     try {
       showNotification('Получаю аудио...', 'loading');
-      const track = { trackId: info.trackId, albumId: info.albumId, origin: ORIGIN };
+      const track = { trackId: info.trackId, albumId: info.albumId, title: info.title, artist: info.artist, origin: ORIGIN };
       const audioUrl = await yandex.getAudioUrl(track, { preferCaptured: true, getCapturedAudio });
       if (!audioUrl) {
         showNotification('Нет URL. Переключите трек и попробуйте снова.', 'error');
         return { success: false, error: 'Нет URL. Переключите трек.' };
       }
+      const fn = yandex.getFilename(track) || `track_${info.trackId}.mp3`;
       await downloadFile(audioUrl, fn);
       showNotification('✓ ' + fn, 'success');
       return { success: true, filename: fn };
@@ -137,13 +135,12 @@
   }
 
   async function downloadTrackById(trackId, albumId, titleInfo) {
-    const fn = (titleInfo?.artist && titleInfo?.title)
-      ? `${sanitize(titleInfo.artist)} - ${sanitize(titleInfo.title)}.mp3`
-      : `track_${trackId}.mp3`;
     try {
       showNotification('Получаю ссылку...', 'loading');
-      const audioUrl = await yandex.getAudioUrl({ trackId, albumId, origin: ORIGIN }, {});
+      const track = { trackId, albumId, title: titleInfo?.title || '', artist: titleInfo?.artist || '', origin: ORIGIN };
+      const audioUrl = await yandex.getAudioUrl(track, {});
       if (audioUrl) {
+        const fn = yandex.getFilename(track) || `track_${trackId}.mp3`;
         await downloadFile(audioUrl, fn);
         showNotification('✓ ' + fn, 'success');
         return { success: true, filename: fn };

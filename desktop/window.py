@@ -260,6 +260,34 @@ class MainWindow(QMainWindow):
         yam_row.addWidget(yam_save_btn)
         layout.addLayout(yam_row)
 
+        # Я.Музыка качество — отдельно от mode combo (тот для yt-dlp)
+        yam_qual_row = QHBoxLayout()
+        yam_qual_label = QLabel('Я.Музыка качество:')
+        yam_qual_label.setToolTip(
+            'Качество скачивания именно для Я.Музыки. На остальные сайты не влияет.\n'
+            'Авто = FLAC если есть (нужен Я.Плюс), иначе MP3 320 — рекомендую большинству.'
+        )
+        yam_qual_row.addWidget(yam_qual_label)
+        self.yam_quality_combo = QComboBox()
+        self.yam_quality_combo.addItem('Авто (FLAC → MP3 320)', 'auto')
+        self.yam_quality_combo.addItem('FLAC (lossless, Я.Плюс)', 'flac')
+        self.yam_quality_combo.addItem('MP3 320 kbps (высокое)', 'mp3-320')
+        self.yam_quality_combo.addItem('MP3 192 kbps (среднее)', 'mp3-192')
+        self.yam_quality_combo.addItem('AAC 256 kbps', 'aac-256')
+        self.yam_quality_combo.addItem('AAC 128 kbps', 'aac-128')
+        self.yam_quality_combo.addItem('Минимальный размер', 'smallest')
+        self.yam_quality_combo.setToolTip(
+            'FLAC ~30-50 МБ/трек, идеально, нужен Я.Плюс.\n'
+            'MP3 320 ~10 МБ/трек, звучит как FLAC на обычной акустике.\n'
+            'MP3 192 ~7 МБ/трек, для телефона/фона.\n'
+            'AAC лучше MP3 при том же битрейте, хорошо для Apple.\n'
+            'Минимальный — если совсем мало места.'
+        )
+        self.yam_quality_combo.currentIndexChanged.connect(self._save_settings)
+        yam_qual_row.addWidget(self.yam_quality_combo)
+        yam_qual_row.addStretch()
+        layout.addLayout(yam_qual_row)
+
         sep = QFrame(); sep.setObjectName('sep'); sep.setFrameShape(QFrame.HLine)
         layout.addWidget(sep)
 
@@ -308,11 +336,17 @@ class MainWindow(QMainWindow):
         self.mode_combo.setCurrentIndex(self.settings.get('mode', 0) or 0)
         self.cookies_combo.setCurrentIndex(self.settings.get('cookies', 0) or 0)
         self.yam_token_edit.setText(self.settings.get('yam_token', '') or '')
+        saved_q = self.settings.get('yam_quality', 'auto') or 'auto'
+        for i in range(self.yam_quality_combo.count()):
+            if self.yam_quality_combo.itemData(i) == saved_q:
+                self.yam_quality_combo.setCurrentIndex(i)
+                break
 
     def _save_settings(self):
         self.settings.set('output_dir', self.dir_edit.text())
         self.settings.set('mode', self.mode_combo.currentIndex())
         self.settings.set('cookies', self.cookies_combo.currentIndex())
+        self.settings.set('yam_quality', self.yam_quality_combo.currentData() or 'auto')
 
     def _refresh_status(self):
         if self.ffmpeg_path:
@@ -459,6 +493,7 @@ class MainWindow(QMainWindow):
             'ffmpeg_path': self.ffmpeg_path,
             'cookies_browser': cookies,
             'yam_token': self.settings.get('yam_token', '') or '',
+            'yam_quality': self.yam_quality_combo.currentData() or 'auto',
             **mode_opts,
         }
 
