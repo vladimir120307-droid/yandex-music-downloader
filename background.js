@@ -100,6 +100,39 @@ function getSaveAs() {
   return new Promise(resolve => chrome.storage.local.get('saveAs', d => resolve(!!d.saveAs)));
 }
 
+// Скачать зашифрованный поток (transport=encraw из /get-file-info Я.Музыки),
+// расшифровать AES-CTR с zero-nonce и hex-ключом, сохранить через blob URL.
+async function decryptAndDownload(url, key, filename, saveAs) {
+  const r = await fetch(url, { credentials: 'omit' });
+  if (!r.ok) throw new Error(`fetch encrypted ${r.status}`);
+  const encrypted = new Uint8Array(await r.arrayBuffer());
+
+  // hex key → Uint8Array
+  const keyBytes = new Uint8Array(key.length / 2);
+  for (let i = 0; i < keyBytes.length; i++) {
+    keyBytes[i] = parseInt(key.substr(i * 2, 2), 16);
+  }
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyBytes, { name: 'AES-CTR' }, false, ['decrypt']
+  );
+  // 16 байт всего: 12 байт nonce (нули) + 4 байта counter. length=32 bits.
+  // Эквивалент pycryptodome AES.new(key, MODE_CTR, nonce=bytes(12)).
+  const counter = new Uint8Array(16);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-CTR', counter, length: 32 }, cryptoKey, encrypted
+  );
+
+  const blob = new Blob([decrypted]);
+  const blobUrl = URL.createObjectURL(blob);
+  return new Promise(resolve => {
+    chrome.downloads.download({ url: blobUrl, filename, saveAs: !!saveAs }, (id) => {
+      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch {} }, 30000);
+      if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message });
+      else resolve({ ok: true, downloadId: id, size: decrypted.byteLength });
+    });
+  });
+}
+
 // ═══════════════════════════════════════
 // PASTE-LINK FLOW (cross-service)
 // ═══════════════════════════════════════
@@ -140,11 +173,20 @@ async function downloadByUrl(rawUrl) {
     const labelTitle = (t.artist && t.title) ? `${t.artist} - ${t.title}` : (t.title || `track ${i + 1}`);
     pushProgress({ status: 'progress', current: i + 1, total: tracks.length, title: labelTitle });
     try {
-      const audioUrl = await service.getAudioUrl(t, {});
-      if (!audioUrl) throw new Error('audio URL пустой');
+      const result = await service.getAudioUrl(t, {});
+      if (!result) throw new Error('audio URL пустой');
       const filename = service.getFilename(t) || `track.mp3`;
       const fullName = isBatch ? `${folder}/${filename}` : filename;
-      const res = await chromeDownload(audioUrl, fullName, saveAs && !isBatch);
+
+      let res;
+      if (typeof result === 'object' && result.encrypted && result.key) {
+        // V2 Я.Музыки: зашифрованный поток, нужно расшифровать
+        res = await decryptAndDownload(result.url, result.key, fullName, saveAs && !isBatch);
+        res = { success: res.ok, error: res.error };
+      } else {
+        const audioUrl = typeof result === 'string' ? result : result.url;
+        res = await chromeDownload(audioUrl, fullName, saveAs && !isBatch);
+      }
       if (res.success) downloaded++;
       else console.warn('[YMD] download failed:', res.error);
     } catch (err) {
@@ -210,6 +252,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         else sendResponse(resp || { success: false });
       });
     });
+    return true;
+  }
+
+  if (message.action === 'downloadEncrypted') {
+    decryptAndDownload(message.url, message.key, message.filename, !!message.saveAs)
+      .then(res => sendResponse(res))
+      .catch(err => sendResponse({ ok: false, error: err.message || String(err) }));
     return true;
   }
 

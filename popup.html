@@ -55,19 +55,19 @@
         Качество <span class="muted">(Я.Музыка)</span>
       </label>
       <select id="quality-select" class="quality-select">
-        <option value="auto">Авто (MP3 320)</option>
+        <option value="auto">Авто — FLAC если есть, иначе MP3 320</option>
+        <option value="flac">FLAC (lossless, нужен Я.Плюс)</option>
         <option value="mp3-320">MP3 320 kbps</option>
       </select>
     </div>
     <details class="quality-help">
-      <summary>про качество и FLAC</summary>
+      <summary>что выбрать?</summary>
       <div class="quality-help-body">
-        <p><b>MP3 320 kbps</b> — ~10 МБ/трек. Звучит как lossless на 99% аудиоустройств.</p>
-        <p style="margin-top:8px; color: rgba(255,180,77,0.85)">
-          <b>⚠ FLAC временно недоступен.</b> Яндекс с 2026 года ограничил lossless только для официальных мобильных приложений (требуется device attestation которую браузер дать не может). Любые расширения и сторонние программы получают <code>403 not-allowed</code> на FLAC. Это касается всех downloader'ов, не только этого.
-        </p>
+        <p><b>Авто</b> — берёт FLAC если Плюс + у трека есть lossless, иначе MP3 320. Рекомендую.</p>
+        <p><b>FLAC</b> — lossless ~30-50 МБ. Поток зашифрован, расшифровываем в коде через AES-CTR. Если у трека нет lossless-мастера — пишет ошибку.</p>
+        <p><b>MP3 320</b> — ~10 МБ. Работает у всех (даже без Плюса).</p>
         <p style="margin-top:8px; color: rgba(255,255,255,0.4)">
-          Если найдём обходной путь — добавим обратно.
+          FLAC использует новый эндпоинт <code>/get-file-info</code> с HMAC-подписью + AES-CTR расшифровка. Если 403 — обычно нужно зайти на music.yandex.ru заново и подождать пока расширение поймает новый токен.
         </p>
       </div>
     </details>
