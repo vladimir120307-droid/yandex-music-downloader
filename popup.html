@@ -55,18 +55,20 @@
         Качество <span class="muted">(Я.Музыка)</span>
       </label>
       <select id="quality-select" class="quality-select">
-        <option value="auto">Авто — FLAC если есть, иначе MP3 320</option>
-        <option value="flac">FLAC (lossless, нужен Я.Плюс)</option>
+        <option value="auto">Авто (MP3 320)</option>
         <option value="mp3-320">MP3 320 kbps</option>
       </select>
     </div>
     <details class="quality-help">
-      <summary>что выбрать?</summary>
+      <summary>про качество и FLAC</summary>
       <div class="quality-help-body">
-        <p><b>Авто</b> — лучшее доступное. FLAC если у тебя Я.Плюс и трек его поддерживает, иначе MP3 320. Рекомендую.</p>
-        <p><b>FLAC</b> — lossless, ~30-50 МБ. Строго: если FLAC недоступен (нет Плюса / у трека нет lossless / токен не даёт доступ) — будет ошибка с пояснением.</p>
-        <p><b>MP3 320</b> — ~10 МБ, звучит как FLAC на обычной акустике. Работает у всех (даже без Плюса).</p>
-        <p style="margin-top:8px; color: rgba(255,219,77,0.7)">💡 Если выбрал FLAC и пишет «недоступен» — нажми кнопку «Открыть страницу для получения токена» ниже. Мобильный OAuth-токен открывает доступ к FLAC, который web-сессия не даёт.</p>
+        <p><b>MP3 320 kbps</b> — ~10 МБ/трек. Звучит как lossless на 99% аудиоустройств.</p>
+        <p style="margin-top:8px; color: rgba(255,180,77,0.85)">
+          <b>⚠ FLAC временно недоступен.</b> Яндекс с 2026 года ограничил lossless только для официальных мобильных приложений (требуется device attestation которую браузер дать не может). Любые расширения и сторонние программы получают <code>403 not-allowed</code> на FLAC. Это касается всех downloader'ов, не только этого.
+        </p>
+        <p style="margin-top:8px; color: rgba(255,255,255,0.4)">
+          Если найдём обходной путь — добавим обратно.
+        </p>
       </div>
     </details>
 
