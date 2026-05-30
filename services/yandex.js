@@ -59,48 +59,45 @@
     }
   }
 
+  function normCodec(s) { return String(s || '').toLowerCase(); }
+  function isFlac(item) {
+    const c = normCodec(item.codec);
+    return c === 'flac' || c === 'flacflac' || c === 'los' || c === 'lossless';
+  }
+  function isMp3(item) { return normCodec(item.codec) === 'mp3'; }
+
   function pickStream(dlInfo, quality) {
     if (!Array.isArray(dlInfo) || !dlInfo.length) return null;
     const byBitrateDesc = (a, b) => (b.bitrateInKbps || 0) - (a.bitrateInKbps || 0);
-    const byBitrateAsc = (a, b) => (a.bitrateInKbps || 0) - (b.bitrateInKbps || 0);
 
-    if (quality === 'smallest') {
-      return [...dlInfo].sort(byBitrateAsc)[0];
-    }
     if (quality === 'auto' || !quality) {
-      // FLAC если есть → иначе MP3 320 → иначе лучшее доступное
-      const flac = dlInfo.find(i => i.codec === 'flac');
+      // FLAC → MP3 320 → лучшее
+      const flac = dlInfo.find(isFlac);
       if (flac) return flac;
-      const mp3_320 = dlInfo.find(i => i.codec === 'mp3' && i.bitrateInKbps === 320);
+      const mp3_320 = dlInfo.find(i => isMp3(i) && i.bitrateInKbps === 320);
       if (mp3_320) return mp3_320;
       return [...dlInfo].sort(byBitrateDesc)[0];
     }
     if (quality === 'flac') {
-      const flac = dlInfo.find(i => i.codec === 'flac');
-      if (flac) return flac;
-      // Фоллбек на лучшее (для не-Плюс юзеров)
+      return dlInfo.find(isFlac) || null;  // null = строго FLAC, нет — пусть звонит выше
+    }
+    if (quality === 'mp3-320') {
+      const exact = dlInfo.find(i => isMp3(i) && i.bitrateInKbps === 320);
+      if (exact) return exact;
+      const mp3s = dlInfo.filter(isMp3).sort(byBitrateDesc);
+      if (mp3s.length) return mp3s[0];
       return [...dlInfo].sort(byBitrateDesc)[0];
     }
-    // Формат 'codec-bitrate': mp3-320, mp3-192, aac-256, aac-128, ...
-    const m = String(quality).match(/^([a-z]+)-(\d+)$/i);
-    if (m) {
-      const codec = m[1].toLowerCase();
-      const target = parseInt(m[2], 10);
-      const exact = dlInfo.find(i => i.codec === codec && i.bitrateInKbps === target);
-      if (exact) return exact;
-      const sameCodec = dlInfo.filter(i => i.codec === codec);
-      if (sameCodec.length) {
-        return sameCodec.sort((a, b) =>
-          Math.abs((a.bitrateInKbps || 0) - target) - Math.abs((b.bitrateInKbps || 0) - target)
-        )[0];
-      }
-    }
-    // Fallback — best
     return [...dlInfo].sort(byBitrateDesc)[0];
   }
 
   function authHeaders(token) {
-    const h = { 'Accept': 'application/json' };
+    // X-Yandex-Music-Client мимикает мобильное приложение — открывает FLAC
+    // в /download-info для Plus-подписчиков (web-плеер сам по себе FLAC не отдаёт).
+    const h = {
+      'Accept': 'application/json',
+      'X-Yandex-Music-Client': 'YandexMusicAndroid/24023621',
+    };
     if (token) h['Authorization'] = 'OAuth ' + token;
     return h;
   }
@@ -190,10 +187,26 @@
       const dlInfo = await apiGet(`/tracks/${track.trackId}/download-info`, token);
       if (!Array.isArray(dlInfo) || !dlInfo.length) throw new Error('Я.Музыка не вернула download-info');
 
+      console.log('[YMD] download-info for', track.trackId,
+        '— available:', dlInfo.map(i => `${i.codec}/${i.bitrateInKbps}kbps`).join(', '),
+        '· requested quality:', quality);
+
       const pick = pickStream(dlInfo, quality);
-      if (!pick) throw new Error('Я.Музыка: подходящий поток не найден');
+      if (!pick) {
+        if (quality === 'flac') {
+          const available = dlInfo.map(i => `${i.codec} ${i.bitrateInKbps}`).join(', ');
+          throw new Error(
+            `FLAC недоступен для этого трека. API вернуло только: ${available}. ` +
+            `Возможные причины: 1) у тебя нет Я.Плюс; 2) у трека нет lossless-мастера; ` +
+            `3) текущий токен не даёт доступа к FLAC — попробуй нажать «Получить токен» ` +
+            `в попапе чтобы получить мобильный OAuth-токен.`
+          );
+        }
+        throw new Error('Я.Музыка: подходящий поток не найден');
+      }
       track._codec = pick.codec;
       track._bitrate = pick.bitrateInKbps;
+      console.log('[YMD] picked stream:', pick.codec, pick.bitrateInKbps, 'kbps');
       return await resolveDownloadInfoUrl(pick.downloadInfoUrl);
     }
 

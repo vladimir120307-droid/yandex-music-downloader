@@ -269,19 +269,13 @@ class MainWindow(QMainWindow):
         )
         yam_qual_row.addWidget(yam_qual_label)
         self.yam_quality_combo = QComboBox()
-        self.yam_quality_combo.addItem('Авто (FLAC → MP3 320)', 'auto')
-        self.yam_quality_combo.addItem('FLAC (lossless, Я.Плюс)', 'flac')
-        self.yam_quality_combo.addItem('MP3 320 kbps (высокое)', 'mp3-320')
-        self.yam_quality_combo.addItem('MP3 192 kbps (среднее)', 'mp3-192')
-        self.yam_quality_combo.addItem('AAC 256 kbps', 'aac-256')
-        self.yam_quality_combo.addItem('AAC 128 kbps', 'aac-128')
-        self.yam_quality_combo.addItem('Минимальный размер', 'smallest')
+        self.yam_quality_combo.addItem('Авто — FLAC если есть, иначе MP3 320', 'auto')
+        self.yam_quality_combo.addItem('FLAC (lossless, нужен Я.Плюс)', 'flac')
+        self.yam_quality_combo.addItem('MP3 320 kbps', 'mp3-320')
         self.yam_quality_combo.setToolTip(
-            'FLAC ~30-50 МБ/трек, идеально, нужен Я.Плюс.\n'
-            'MP3 320 ~10 МБ/трек, звучит как FLAC на обычной акустике.\n'
-            'MP3 192 ~7 МБ/трек, для телефона/фона.\n'
-            'AAC лучше MP3 при том же битрейте, хорошо для Apple.\n'
-            'Минимальный — если совсем мало места.'
+            'Авто — лучшее доступное (FLAC если у тебя Плюс и есть lossless, иначе MP3 320).\n'
+            'FLAC — строго lossless. ~30-50 МБ/трек. Если у трека/токена нет — будет ошибка.\n'
+            'MP3 320 — ~10 МБ/трек, работает у всех включая бесплатных.'
         )
         self.yam_quality_combo.currentIndexChanged.connect(self._save_settings)
         yam_qual_row.addWidget(self.yam_quality_combo)

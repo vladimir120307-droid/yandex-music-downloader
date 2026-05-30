@@ -126,7 +126,8 @@
       }
       const fn = yandex.getFilename(track) || `track_${info.trackId}.mp3`;
       await downloadFile(audioUrl, fn);
-      showNotification('✓ ' + fn, 'success');
+      const qualityLabel = track._codec ? ` [${String(track._codec).toUpperCase()}${track._bitrate ? ' ' + track._bitrate : ''}]` : '';
+      showNotification('✓ ' + fn + qualityLabel, 'success');
       return { success: true, filename: fn };
     } catch (err) {
       showNotification('Ошибка: ' + err.message, 'error');
@@ -336,8 +337,15 @@
       const d = e.data;
       if (!d || d.type !== 'ymd-yam-fetch-token' || !d.token) return;
       try {
-        chrome.storage.local.get(['yamToken'], (cur) => {
+        chrome.storage.local.get(['yamToken', 'yamTokenSource'], (cur) => {
           if (cur && cur.yamToken === d.token) return;
+          // НЕ перезаписываем ручной/OAuth-токен — он может быть мобильным
+          // (с доступом к FLAC), а fetch-hook ловит web-токен (без FLAC).
+          const protect = ['manual', 'manual-url', 'oauth-redirect'];
+          if (cur && protect.includes(cur.yamTokenSource)) {
+            console.log('[YMD] fetch-hook token ignored (есть ручной/OAuth)');
+            return;
+          }
           chrome.storage.local.set({
             yamToken: d.token,
             yamTokenSource: 'fetch-hook:' + (d.source || ''),
