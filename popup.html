@@ -55,24 +55,18 @@
         Качество <span class="muted">(Я.Музыка)</span>
       </label>
       <select id="quality-select" class="quality-select">
-        <option value="auto">Авто — FLAC → MP3 320</option>
-        <option value="flac">FLAC (lossless, Я.Плюс)</option>
+        <option value="auto">Авто — FLAC если есть, иначе MP3 320</option>
+        <option value="flac">FLAC (lossless, нужен Я.Плюс)</option>
         <option value="mp3-320">MP3 320 kbps</option>
-        <option value="mp3-192">MP3 192 kbps</option>
-        <option value="aac-256">AAC 256 kbps</option>
-        <option value="aac-128">AAC 128 kbps</option>
-        <option value="smallest">Минимальный размер</option>
       </select>
     </div>
     <details class="quality-help">
       <summary>что выбрать?</summary>
       <div class="quality-help-body">
-        <p><b>Авто</b> — лучшее доступное. FLAC если у тебя Я.Плюс и у трека есть lossless, иначе MP3 320. Рекомендую большинству.</p>
-        <p><b>FLAC</b> — lossless, ~30-50 МБ. Только для Плюс-подписки. Слышно разницу на хороших наушниках/колонках.</p>
-        <p><b>MP3 320</b> — ~10 МБ, звучит как FLAC на обычных колонках. Универсал.</p>
-        <p><b>MP3 192</b> — ~7 МБ, для телефона/фона.</p>
-        <p><b>AAC 256</b> — лучше MP3 на том же битрейте. Apple-стандарт.</p>
-        <p><b>Минимальный</b> — самое маленькое из доступного.</p>
+        <p><b>Авто</b> — лучшее доступное. FLAC если у тебя Я.Плюс и трек его поддерживает, иначе MP3 320. Рекомендую.</p>
+        <p><b>FLAC</b> — lossless, ~30-50 МБ. Строго: если FLAC недоступен (нет Плюса / у трека нет lossless / токен не даёт доступ) — будет ошибка с пояснением.</p>
+        <p><b>MP3 320</b> — ~10 МБ, звучит как FLAC на обычной акустике. Работает у всех (даже без Плюса).</p>
+        <p style="margin-top:8px; color: rgba(255,219,77,0.7)">💡 Если выбрал FLAC и пишет «недоступен» — нажми кнопку «Открыть страницу для получения токена» ниже. Мобильный OAuth-токен открывает доступ к FLAC, который web-сессия не даёт.</p>
       </div>
     </details>
 
