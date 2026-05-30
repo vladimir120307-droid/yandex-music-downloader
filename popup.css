@@ -190,6 +190,55 @@ body {
 .toggle-check:checked { background: rgba(255, 219, 77, 0.35); }
 .toggle-check:checked::before { left: 18px; background: #ffdb4d; }
 
+.quality-row { gap: 8px; }
+.muted { color: rgba(255,255,255,0.3); font-weight: 400; }
+
+.quality-select {
+  appearance: none; -webkit-appearance: none;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 11px;
+  padding: 5px 22px 5px 8px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  max-width: 200px;
+}
+.quality-select:focus { border-color: rgba(255, 219, 77, 0.4); }
+.quality-select option { background: #1a1a2e; color: #fff; }
+
+.quality-help {
+  margin-top: 4px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+}
+.quality-help > summary {
+  cursor: pointer;
+  padding: 2px 6px;
+  list-style: none;
+  text-decoration: underline dotted rgba(255,255,255,0.2);
+  user-select: none;
+  display: inline-block;
+}
+.quality-help > summary::-webkit-details-marker { display: none; }
+.quality-help-body {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  margin-top: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+.quality-help-body p {
+  margin: 4px 0;
+  line-height: 1.4;
+}
+.quality-help-body b { color: rgba(255, 219, 77, 0.9); font-weight: 600; }
+
 .token-section {
   margin-top: 10px;
   background: rgba(255, 255, 255, 0.03);

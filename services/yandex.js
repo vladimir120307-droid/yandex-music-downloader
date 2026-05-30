@@ -40,6 +40,65 @@
     });
   }
 
+  async function getQualityPref() {
+    return new Promise(resolve => {
+      try {
+        chrome.storage.local.get('yamQuality', d => resolve((d && d.yamQuality) || 'auto'));
+      } catch { resolve('auto'); }
+    });
+  }
+
+  function extForCodec(codec) {
+    switch ((codec || '').toLowerCase()) {
+      case 'flac': return 'flac';
+      case 'aac':
+      case 'he-aac': return 'aac';
+      case 'opus': return 'opus';
+      case 'mp3':
+      default: return 'mp3';
+    }
+  }
+
+  function pickStream(dlInfo, quality) {
+    if (!Array.isArray(dlInfo) || !dlInfo.length) return null;
+    const byBitrateDesc = (a, b) => (b.bitrateInKbps || 0) - (a.bitrateInKbps || 0);
+    const byBitrateAsc = (a, b) => (a.bitrateInKbps || 0) - (b.bitrateInKbps || 0);
+
+    if (quality === 'smallest') {
+      return [...dlInfo].sort(byBitrateAsc)[0];
+    }
+    if (quality === 'auto' || !quality) {
+      // FLAC если есть → иначе MP3 320 → иначе лучшее доступное
+      const flac = dlInfo.find(i => i.codec === 'flac');
+      if (flac) return flac;
+      const mp3_320 = dlInfo.find(i => i.codec === 'mp3' && i.bitrateInKbps === 320);
+      if (mp3_320) return mp3_320;
+      return [...dlInfo].sort(byBitrateDesc)[0];
+    }
+    if (quality === 'flac') {
+      const flac = dlInfo.find(i => i.codec === 'flac');
+      if (flac) return flac;
+      // Фоллбек на лучшее (для не-Плюс юзеров)
+      return [...dlInfo].sort(byBitrateDesc)[0];
+    }
+    // Формат 'codec-bitrate': mp3-320, mp3-192, aac-256, aac-128, ...
+    const m = String(quality).match(/^([a-z]+)-(\d+)$/i);
+    if (m) {
+      const codec = m[1].toLowerCase();
+      const target = parseInt(m[2], 10);
+      const exact = dlInfo.find(i => i.codec === codec && i.bitrateInKbps === target);
+      if (exact) return exact;
+      const sameCodec = dlInfo.filter(i => i.codec === codec);
+      if (sameCodec.length) {
+        return sameCodec.sort((a, b) =>
+          Math.abs((a.bitrateInKbps || 0) - target) - Math.abs((b.bitrateInKbps || 0) - target)
+        )[0];
+      }
+    }
+    // Fallback — best
+    return [...dlInfo].sort(byBitrateDesc)[0];
+  }
+
   function authHeaders(token) {
     const h = { 'Accept': 'application/json' };
     if (token) h['Authorization'] = 'OAuth ' + token;
@@ -140,10 +199,13 @@
 
     const dlInfo = await apiGet(`/tracks/${track.trackId}/download-info`, token);
     if (!Array.isArray(dlInfo) || !dlInfo.length) throw new Error('Я.Музыка не вернула download-info');
-    // Лучшее качество mp3
-    const mp3s = dlInfo.filter(i => i.codec === 'mp3');
-    const pick = (mp3s.length ? mp3s : dlInfo).reduce((a, b) =>
-      (b.bitrateInKbps || 0) > (a.bitrateInKbps || 0) ? b : a, dlInfo[0]);
+
+    const quality = await getQualityPref();
+    const pick = pickStream(dlInfo, quality);
+    if (!pick) throw new Error('Я.Музыка: подходящий поток не найден');
+    // Запоминаем codec на треке, чтоб getFilename выбрал правильное расширение
+    track._codec = pick.codec;
+    track._bitrate = pick.bitrateInKbps;
 
     // storage.mds.yandex.net не отдаёт CORS — fetch через background.
     const sep = pick.downloadInfoUrl.includes('?') ? '&' : '?';
@@ -181,8 +243,9 @@
     listTracks,
     getAudioUrl,
     getFilename(track) {
-      return globalThis.YMD.utils.makeFilename(track.artist, track.title, 'mp3') ||
-        `track_${track.trackId}.mp3`;
+      const ext = extForCodec(track && track._codec);
+      return globalThis.YMD.utils.makeFilename(track.artist, track.title, ext) ||
+        `track_${track.trackId}.${ext}`;
     },
   });
 })();
