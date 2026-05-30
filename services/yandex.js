@@ -26,8 +26,10 @@
     if (m) return { type: 'album', albumId: m[1] };
     m = p.match(/\/users\/([^/]+)\/playlists\/(\d+)/);
     if (m) return { type: 'playlist', owner: m[1], kinds: m[2] };
-    // Новый формат: /playlists/{uuid}  (например 01a6eb8c-578e-8e47-b4b4-bab9aae9da0b)
-    m = p.match(/\/playlists\/([a-f0-9-]{32,40})/i);
+    // Новый формат: /playlists/{uuid}. UUID может быть голый ИЛИ с префиксом
+    // (например `lk.d09349ea-...` — Ласкавая/Лк, личные плейлисты юзера и т.п.).
+    // API эндпоинт /playlist/{uuid} принимает полный идентификатор с префиксом.
+    m = p.match(/\/playlists\/((?:[a-z]{1,4}\.)?[a-f0-9-]{32,40})/i);
     if (m) return { type: 'playlist', uuid: m[1] };
     return null;
   }
