@@ -297,7 +297,8 @@ class MainWindow(QMainWindow):
         h.setSectionResizeMode(0, QHeaderView.Stretch)
         h.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         h.setSectionResizeMode(2, QHeaderView.Fixed)
-        h.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        h.setSectionResizeMode(3, QHeaderView.Interactive)
+        self.table.setColumnWidth(3, 260)
         self.table.setColumnWidth(2, 160)
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -470,12 +471,55 @@ class MainWindow(QMainWindow):
 
     # ─────────────────────── Job management ───────────────────────
     def add_jobs_from_input(self):
+        import re as _re
         raw = self.url_edit.text().strip()
         if not raw:
             return
         urls = [u for u in raw.split() if u]
         if not urls:
             return
+
+        # Авто-извлечение токена Я.Музыки из OAuth callback URL.
+        # Юзер может вставить ссылку из истории браузера типа
+        # passport.yandex.ru/push?retpath=...#access_token=y0__... — выдёргиваем
+        # токен и не пытаемся качать эту ссылку как медиа.
+        extracted_token = None
+        non_oauth = []
+        for u in urls:
+            m = _re.search(r'[#&?]access_token=([A-Za-z0-9_.\-]+)', u)
+            if m:
+                extracted_token = extracted_token or m.group(1)
+            else:
+                non_oauth.append(u)
+        if extracted_token:
+            self.settings.set('yam_token', extracted_token)
+            self.yam_token_edit.setText(extracted_token)
+            self.status_bar.showMessage(
+                f'✓ Я.Музыка токен извлечён из URL и сохранён ({len(extracted_token)} симв.)', 8000
+            )
+            if not non_oauth:
+                self.url_edit.clear()
+                return
+            urls = non_oauth
+
+        # Pre-flight: для Я.Музыки токен обязателен — проверим заранее
+        yam_urls = [u for u in urls if 'music.yandex.' in u]
+        token = (self.settings.get('yam_token', '') or '').strip()
+        if yam_urls and not token:
+            reply = QMessageBox.question(
+                self,
+                'Нужен токен Я.Музыки',
+                'Для скачивания с Я.Музыки нужен OAuth-токен. '
+                'Открыть страницу для его получения сейчас?\n\n'
+                'После авторизации скопируй URL целиком из адресной строки '
+                '(Ctrl+L → Ctrl+C) и вставь в это же поле — программа сама '
+                'вытащит токен.',
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                self._open_yam_oauth()
+            return
+
         for u in urls:
             self._queue_url(u)
         self.url_edit.clear()
@@ -596,9 +640,14 @@ class MainWindow(QMainWindow):
             return
         self.table.cellWidget(row, 2).setFormat('—')
         item = self.table.item(row, 3)
-        item.setText('✗ Ошибка')
+        # Показываем суть ошибки прямо в колонке статуса — чтобы юзеру не надо
+        # было наводить мышку на tooltip чтоб понять что пошло не так.
+        short = (msg or '').splitlines()[0] if msg else ''
+        if len(short) > 80:
+            short = short[:77] + '…'
+        item.setText('✗ ' + (short or 'Ошибка'))
         item.setToolTip(msg)
-        self.status_bar.showMessage(f'Ошибка: {msg[:120]}', 8000)
+        self.status_bar.showMessage(f'Ошибка: {msg[:160]}', 10000)
 
     # ─────────────────────── Table interactions ───────────────────────
     def _show_table_menu(self, pos):
