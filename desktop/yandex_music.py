@@ -78,7 +78,9 @@ def _parse_url(url: str) -> dict:
     m = re.search(r'/users/([^/]+)/playlists/(\d+)', p)
     if m:
         return {'type': 'playlist', 'owner': m.group(1), 'kinds': m.group(2)}
-    m = re.search(r'/playlists/([a-f0-9-]{32,40})', p, re.I)
+    # UUID-плейлисты могут быть с префиксом типа `lk.` (личные плейлисты).
+    # API /playlist/{uuid} принимает полный идентификатор с префиксом.
+    m = re.search(r'/playlists/((?:[a-z]{1,4}\.)?[a-f0-9-]{32,40})', p, re.I)
     if m:
         return {'type': 'playlist', 'uuid': m.group(1)}
     raise ValueError(
