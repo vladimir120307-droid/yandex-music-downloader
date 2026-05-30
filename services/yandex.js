@@ -59,6 +59,44 @@
     }
   }
 
+  // HMAC-ключ для V2 (/get-file-info) — из публичных yandex-music API реверсов
+  const V2_HMAC_KEY = 'p93jhgh689SBReK6ghtw62';
+
+  async function hmacSha256Hex(keyStr, msgStr) {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw', enc.encode(keyStr),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false, ['sign']
+    );
+    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msgStr));
+    return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function getFileInfoV2(trackId, token, quality) {
+    // Новый эндпоинт api.music.yandex.net/get-file-info с HMAC-подписью.
+    // Возвращает прямой URL (без MD5-sign дополнительного), и поддерживает FLAC
+    // для мобильных OAuth-токенов (web-токен → 403 not-allowed).
+    const ts = Math.floor(Date.now() / 1000);
+    const codecs = 'flac,aac,mp3';
+    const transports = 'raw';
+    const sign = await hmacSha256Hex(V2_HMAC_KEY, `${ts}${trackId}${codecs}${transports}`);
+    const url = `${API_BASE}/get-file-info?ts=${ts}&trackId=${trackId}` +
+      `&quality=${encodeURIComponent(quality)}` +
+      `&codecs=${encodeURIComponent(codecs)}` +
+      `&transports=${encodeURIComponent(transports)}` +
+      `&sign=${sign}`;
+    const resp = await fetch(url, { headers: authHeaders(token) });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      let name = '';
+      try { name = JSON.parse(text).result?.name || ''; } catch {}
+      throw new Error(`/get-file-info ${resp.status} ${name || text.slice(0, 100)}`);
+    }
+    const data = await resp.json();
+    return data.result || data;
+  }
+
   function normCodec(s) { return String(s || '').toLowerCase(); }
   function isFlac(item) {
     const c = normCodec(item.codec);
@@ -180,30 +218,54 @@
     const quality = await getQualityPref();
     const token = await getToken();
 
-    // С токеном — ВСЕГДА API-путь, чтобы получить именно выбранное качество.
-    // Captured URL (что плеер уже скачал) — это качество ПЛЕЕРА, не наше.
-    // Если юзер выбрал FLAC, а плеер играл 320 — captured даст 320, не FLAC.
     if (token) {
+      // Для FLAC и Auto — сначала пробуем V2 эндпоинт /get-file-info (даёт прямой
+      // URL для FLAC). Если токен мобильный (OAuth client_id Яндекс.Музыки) —
+      // получим lossless. Если web-токен — будет 403 not-allowed, фоллбек на V1.
+      if (quality === 'flac' || quality === 'auto' || !quality) {
+        try {
+          const v2 = await getFileInfoV2(track.trackId, token, 'lossless');
+          const v2url = v2?.urls?.[0] || v2?.downloadInfoUrl;
+          const v2codec = normCodec(v2?.codec);
+          if (v2url && v2codec) {
+            // Если запросили строго FLAC и получили его — отдаём
+            // Если Auto — отдаём что есть (это лучшее что V2 выдал)
+            if (quality !== 'flac' || v2codec === 'flac') {
+              track._codec = v2.codec;
+              track._bitrate = v2.bitrate;
+              console.log('[YMD] V2 endpoint:', v2.codec, v2.bitrate, 'kbps · direct URL');
+              return v2url;
+            }
+            console.log('[YMD] V2 вернул не-FLAC (' + v2.codec + '), хотя запросили FLAC. Fallback на V1.');
+          }
+        } catch (err) {
+          console.warn('[YMD] V2 endpoint failed:', err.message);
+          if (quality === 'flac') {
+            // Строгий FLAC — без V2 не получится. Внятная ошибка.
+            const isAuth = /403|not-allowed/i.test(err.message);
+            throw new Error(
+              isAuth
+                ? 'FLAC недоступен: текущий токен не имеет доступа к lossless. ' +
+                  'Нажми в попапе «Открыть страницу для получения токена» — это ' +
+                  'мобильный OAuth-флоу, он даёт нужный scope для FLAC. ' +
+                  '(Авто-захваченный токен с music.yandex.ru — это web-сессия, у неё нет FLAC.)'
+                : 'FLAC недоступен: ' + err.message
+            );
+          }
+          // Для Auto — продолжаем в V1 path
+        }
+      }
+
+      // V1 path — /tracks/X/download-info (для MP3 и как fallback)
       const dlInfo = await apiGet(`/tracks/${track.trackId}/download-info`, token);
       if (!Array.isArray(dlInfo) || !dlInfo.length) throw new Error('Я.Музыка не вернула download-info');
 
-      console.log('[YMD] download-info for', track.trackId,
+      console.log('[YMD] V1 download-info for', track.trackId,
         '— available:', dlInfo.map(i => `${i.codec}/${i.bitrateInKbps}kbps`).join(', '),
         '· requested quality:', quality);
 
       const pick = pickStream(dlInfo, quality);
-      if (!pick) {
-        if (quality === 'flac') {
-          const available = dlInfo.map(i => `${i.codec} ${i.bitrateInKbps}`).join(', ');
-          throw new Error(
-            `FLAC недоступен для этого трека. API вернуло только: ${available}. ` +
-            `Возможные причины: 1) у тебя нет Я.Плюс; 2) у трека нет lossless-мастера; ` +
-            `3) текущий токен не даёт доступа к FLAC — попробуй нажать «Получить токен» ` +
-            `в попапе чтобы получить мобильный OAuth-токен.`
-          );
-        }
-        throw new Error('Я.Музыка: подходящий поток не найден');
-      }
+      if (!pick) throw new Error('Я.Музыка: подходящий поток не найден');
       track._codec = pick.codec;
       track._bitrate = pick.bitrateInKbps;
       console.log('[YMD] picked stream:', pick.codec, pick.bitrateInKbps, 'kbps');
