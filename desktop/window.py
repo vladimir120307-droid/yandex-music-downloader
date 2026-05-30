@@ -297,7 +297,8 @@ class MainWindow(QMainWindow):
         h.setSectionResizeMode(0, QHeaderView.Stretch)
         h.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         h.setSectionResizeMode(2, QHeaderView.Fixed)
-        h.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        h.setSectionResizeMode(3, QHeaderView.Interactive)
+        self.table.setColumnWidth(3, 240)
         self.table.setColumnWidth(2, 160)
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -476,6 +477,25 @@ class MainWindow(QMainWindow):
         urls = [u for u in raw.split() if u]
         if not urls:
             return
+
+        # Pre-flight: для Я.Музыки токен обязателен, проверим заранее
+        yam_urls = [u for u in urls if 'music.yandex.' in u]
+        token = (self.settings.get('yam_token', '') or '').strip()
+        if yam_urls and not token:
+            reply = QMessageBox.question(
+                self,
+                'Нужен токен Я.Музыки',
+                'Для скачивания с Я.Музыки нужен OAuth-токен. '
+                'Открыть страницу для его получения сейчас?\n\n'
+                'После авторизации скопируй URL целиком (Ctrl+L → Ctrl+C) '
+                'или access_token из адресной строки и вставь в поле '
+                '«Я.Музыка токен» ниже, потом нажми «Сохранить».',
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                self._open_yam_oauth()
+            return
+
         for u in urls:
             self._queue_url(u)
         self.url_edit.clear()
@@ -596,9 +616,13 @@ class MainWindow(QMainWindow):
             return
         self.table.cellWidget(row, 2).setFormat('—')
         item = self.table.item(row, 3)
-        item.setText('✗ Ошибка')
+        # Берём первую строку и обрезаем — показываем суть в колонке статуса
+        short = (msg or '').splitlines()[0] if msg else ''
+        if len(short) > 80:
+            short = short[:77] + '…'
+        item.setText('✗ ' + (short or 'Ошибка'))
         item.setToolTip(msg)
-        self.status_bar.showMessage(f'Ошибка: {msg[:120]}', 8000)
+        self.status_bar.showMessage(f'Ошибка: {msg[:160]}', 10000)
 
     # ─────────────────────── Table interactions ───────────────────────
     def _show_table_menu(self, pos):
