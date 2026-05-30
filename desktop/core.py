@@ -123,11 +123,11 @@ class DownloadWorker(QObject):
 
     def _run_yandex_music(self):
         output_dir = self.options.get('output_dir') or str(Path.home() / 'Downloads')
-        cookies_browser = self.options.get('cookies_browser')
+        token = self.options.get('yam_token') or ''
         final_path = yandex_music.download(
             self.url,
             output_dir,
-            cookies_browser=cookies_browser,
+            token=token,
             info_cb=lambda info: self.info_ready.emit(self.job_id, info),
             progress_cb=lambda p: self.progress.emit(self.job_id, p),
             cancel_check=lambda: self._cancel,

@@ -1,8 +1,20 @@
-"""Yandex Music — прямое скачивание mp3 (без ffmpeg).
+"""Yandex Music — прямое скачивание через api.music.yandex.net + OAuth-токен.
 
-Логика портирована из services/yandex.js (расширения). Использует публичный
-API music.yandex.ru/handlers/* + signed-URL CDN. Cookies из браузера —
-опционально, для премиум-качества и приватных плейлистов.
+Я.Музыка снесла свой старый веб-API (music.yandex.ru/handlers/*.jsx) в мае 2026.
+Теперь рабочий путь — mobile API на api.music.yandex.net с OAuth-токеном.
+
+Получение токена (один раз):
+1. Открыть в браузере:
+   https://oauth.yandex.ru/authorize?response_type=token&client_id=23cabbbdc6cd418abb4b39c32c41195d
+2. Залогиниться, разрешить доступ
+3. Скопировать значение access_token из URL после редиректа
+4. Вставить в поле «Токен Я.Музыки» в настройках программы
+
+Поддерживает:
+- треки  (/album/X/track/Y, /track/Y)
+- альбомы (/album/X)
+- плейлисты — старые (/users/owner/playlists/N) и новые UUID (/playlists/{uuid})
+- mp3 напрямую, без ffmpeg
 """
 from __future__ import annotations
 
@@ -11,18 +23,20 @@ import json
 import re
 import urllib.parse
 import urllib.request
-from http.cookiejar import CookieJar
 from pathlib import Path
 from typing import Callable, Optional
 
+API_BASE = 'https://api.music.yandex.net'
 SIGN_SALT = 'XGRlBW9FXlekgbPrRHuSiA'
-DEFAULT_ORIGIN = 'https://music.yandex.ru'
+OAUTH_URL = (
+    'https://oauth.yandex.ru/authorize?response_type=token'
+    '&client_id=23cabbbdc6cd418abb4b39c32c41195d'
+)
 
 _HOST_DOMAINS = (
     'music.yandex.ru', 'music.yandex.com', 'music.yandex.kz',
     'music.yandex.by', 'music.yandex.ua',
 )
-
 _YM_RE = re.compile(r'^https?://music\.yandex\.\w+/', re.I)
 
 
@@ -39,133 +53,125 @@ def _sanitize(name: str) -> str:
     return name[:180] or 'track'
 
 
-# ─────────────────────── Cookies (через yt-dlp) ───────────────────────
-
-class _NullLogger:
-    def warning(self, *a, **k): pass
-    def error(self, *a, **k): pass
-    def info(self, *a, **k): pass
-    def debug(self, *a, **k): pass
-
-
-def _get_cookiejar(browser: Optional[str]) -> CookieJar:
-    if not browser:
-        return CookieJar()
-    try:
-        from yt_dlp.cookies import extract_cookies_from_browser
-    except ImportError:
-        return CookieJar()
-    # API yt-dlp менялся между версиями — пытаемся несколько сигнатур.
-    for kwargs in ({}, {'logger': _NullLogger()}, {'logger': _NullLogger(), 'profile': None}):
-        try:
-            return extract_cookies_from_browser(browser, **kwargs)
-        except TypeError:
-            continue
-        except Exception:
-            return CookieJar()
-    return CookieJar()
-
-
-def _make_opener(cookies_browser: Optional[str]):
-    cj = _get_cookiejar(cookies_browser)
-    return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-
-
-# ─────────────────────── URL parser ───────────────────────
+# ─────────────────────── URL parsing ───────────────────────
 
 def _parse_url(url: str) -> dict:
     u = urllib.parse.urlparse(url)
     if not any(u.netloc == d or u.netloc.endswith('.' + d) for d in _HOST_DOMAINS):
         raise ValueError('Не Я.Музыка URL')
-    origin = f'{u.scheme}://{u.netloc}'
     p = u.path
     m = re.search(r'/album/(\d+)/track/(\d+)', p)
     if m:
-        return {'type': 'track', 'albumId': m.group(1), 'trackId': m.group(2), 'origin': origin}
+        return {'type': 'track', 'albumId': m.group(1), 'trackId': m.group(2)}
     m = re.search(r'/track/(\d+)', p)
     if m:
-        return {'type': 'track', 'albumId': None, 'trackId': m.group(1), 'origin': origin}
+        return {'type': 'track', 'albumId': None, 'trackId': m.group(1)}
     m = re.search(r'/album/(\d+)', p)
     if m:
-        return {'type': 'album', 'albumId': m.group(1), 'origin': origin}
+        return {'type': 'album', 'albumId': m.group(1)}
     m = re.search(r'/users/([^/]+)/playlists/(\d+)', p)
     if m:
-        return {'type': 'playlist', 'owner': m.group(1), 'kinds': m.group(2), 'origin': origin}
-    raise ValueError('Не удалось распознать ссылку Я.Музыки')
+        return {'type': 'playlist', 'owner': m.group(1), 'kinds': m.group(2)}
+    m = re.search(r'/playlists/([a-f0-9-]{32,40})', p, re.I)
+    if m:
+        return {'type': 'playlist', 'uuid': m.group(1)}
+    raise ValueError(
+        'Не удалось распознать ссылку Я.Музыки. Поддерживаются ссылки на трек, '
+        'альбом и плейлист (включая UUID-плейлисты /playlists/{uuid}).'
+    )
 
 
 # ─────────────────────── HTTP ───────────────────────
 
-def _api_get_json(opener, url: str, origin: str) -> dict:
-    req = urllib.request.Request(url, headers={
-        'X-Retpath-Y': origin + '/',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) MusicDownloader/3.1',
+def _headers(token: Optional[str], extra: Optional[dict] = None) -> dict:
+    h = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) MusicDownloader/3.2',
         'Accept': 'application/json',
-    })
-    with opener.open(req, timeout=30) as resp:
-        return json.loads(resp.read().decode('utf-8'))
+    }
+    if token:
+        h['Authorization'] = f'OAuth {token}'
+    if extra:
+        h.update(extra)
+    return h
+
+
+def _api_get(path: str, token: Optional[str]) -> dict:
+    req = urllib.request.Request(f'{API_BASE}{path}', headers=_headers(token))
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode('utf-8'))
+    return data.get('result', data)
+
+
+def _api_post(path: str, body: str, token: Optional[str]) -> dict:
+    req = urllib.request.Request(
+        f'{API_BASE}{path}',
+        data=body.encode('utf-8'),
+        method='POST',
+        headers=_headers(token, {'Content-Type': 'application/x-www-form-urlencoded'}),
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode('utf-8'))
+    return data.get('result', data)
 
 
 # ─────────────────────── Metadata ───────────────────────
 
-def _track_from_api(t: dict, default_album: str, origin: str) -> dict:
+def _shape_track(t: dict, default_album: str = '') -> dict:
     return {
-        'trackId': str(t.get('id') or ''),
+        'trackId': str(t.get('id') or t.get('realId') or ''),
         'albumId': str(((t.get('albums') or [{}])[0]).get('id') or default_album or ''),
         'title': t.get('title') or '',
-        'artist': ', '.join(a.get('name', '') for a in (t.get('artists') or [])),
-        'origin': origin,
+        'artist': ', '.join(a.get('name', '') for a in (t.get('artists') or []) if a.get('name')),
     }
 
 
-def _fetch_album(opener, origin: str, album_id: str) -> list:
-    url = f'{origin}/handlers/album/{album_id}/full.jsx'
-    data = _api_get_json(opener, url, origin)
+def _fetch_album(album_id: str, token: Optional[str]) -> list:
+    data = _api_get(f'/albums/{album_id}/with-tracks', token)
     out = []
     for vol in (data.get('volumes') or []):
         for t in vol:
-            out.append(_track_from_api(t, album_id, origin))
-    return [t for t in out if t['trackId']]
-
-
-def _fetch_playlist(opener, origin: str, owner: str, kinds: str) -> list:
-    url = f'{origin}/handlers/playlist/{owner}/{kinds}/full.jsx'
-    data = _api_get_json(opener, url, origin)
-    pl = data.get('playlist') or data
-    out = []
-    for entry in (pl.get('tracks') or []):
-        tr = entry.get('track') or entry
-        if tr.get('id'):
-            out.append(_track_from_api(tr, '', origin))
+            tr = _shape_track(t, album_id)
+            if tr['trackId']:
+                out.append(tr)
     return out
 
 
-def _fetch_single(opener, origin: str, track_id: str, album_id: Optional[str]) -> dict:
-    if album_id:
-        try:
-            for t in _fetch_album(opener, origin, album_id):
-                if t['trackId'] == str(track_id):
-                    return t
-        except Exception:
-            pass
-    return {'trackId': str(track_id), 'albumId': album_id or '', 'title': '',
-            'artist': '', 'origin': origin}
+def _fetch_playlist_legacy(owner: str, kinds: str, token: Optional[str]) -> list:
+    pl = _api_get(f'/users/{owner}/playlists/{kinds}', token)
+    items = pl.get('tracks') or []
+    return [_shape_track(e.get('track', e)) for e in items if (e.get('track') or e).get('id')]
+
+
+def _fetch_playlist_uuid(uuid: str, token: Optional[str]) -> list:
+    pl = _api_get(f'/playlist/{uuid}', token)
+    items = pl.get('tracks') or []
+    return [_shape_track(e.get('track', e)) for e in items if (e.get('track') or e).get('id')]
+
+
+def _fetch_single_track(track_id: str, album_id: Optional[str], token: Optional[str]) -> dict:
+    arr = _api_post('/tracks', f'track-ids={urllib.parse.quote(str(track_id))}', token)
+    if isinstance(arr, list) and arr:
+        return _shape_track(arr[0], album_id or '')
+    return {'trackId': str(track_id), 'albumId': album_id or '', 'title': '', 'artist': ''}
 
 
 # ─────────────────────── Audio URL resolution ───────────────────────
 
-def _resolve_xml_to_mp3(opener, xml_url: str) -> Optional[str]:
-    if 'format=' not in xml_url:
-        xml_url += ('&' if '?' in xml_url else '?') + 'format=json'
-    req = urllib.request.Request(xml_url, headers={
-        'User-Agent': 'Mozilla/5.0 MusicDownloader/3.1',
-    })
-    with opener.open(req, timeout=30) as resp:
+def _resolve_audio_url(track: dict, token: str) -> Optional[str]:
+    dl_info = _api_get(f"/tracks/{track['trackId']}/download-info", token)
+    if not isinstance(dl_info, list) or not dl_info:
+        return None
+    mp3s = [i for i in dl_info if i.get('codec') == 'mp3']
+    pool = mp3s if mp3s else dl_info
+    pick = max(pool, key=lambda i: i.get('bitrateInKbps', 0))
+    info_url = pick['downloadInfoUrl']
+    info_url += ('&' if '?' in info_url else '?') + 'format=json'
+    req = urllib.request.Request(info_url, headers=_headers(None))  # storage.mds.* без авторизации
+    with urllib.request.urlopen(req, timeout=30) as resp:
         text = resp.read().decode('utf-8', errors='replace')
-    host = path = ts = s = None
     try:
         j = json.loads(text)
-        host = j.get('host'); path = j.get('path'); ts = j.get('ts'); s = j.get('s')
+        host, path, ts, s = j.get('host'), j.get('path'), j.get('ts'), j.get('s')
     except Exception:
         def _tag(name):
             m = re.search(rf'<{name}>(.*?)</{name}>', text)
@@ -177,53 +183,22 @@ def _resolve_xml_to_mp3(opener, xml_url: str) -> Optional[str]:
     return f'https://{host}/get-mp3/{sign}/{ts}{path}'
 
 
-def _get_audio_url(opener, track: dict) -> Optional[str]:
-    origin = track.get('origin', DEFAULT_ORIGIN)
-    host = urllib.parse.urlparse(origin).netloc
-    tid = track['trackId']
-    aid = track.get('albumId') or ''
-    candidates = []
-    if aid:
-        candidates.append(
-            f'{origin}/api/v2.1/handlers/track/{tid}:{aid}'
-            f'/web-album_track-track-track-main/download/m'
-            f'?hq=1&external-domain={host}&overembed=no'
-        )
-    candidates.append(
-        f'{origin}/api/v2.1/handlers/track/{tid}'
-        f'/web-album_track-track-track-main/download/m'
-        f'?hq=1&external-domain={host}&overembed=no'
-    )
-    for ep in candidates:
-        try:
-            data = _api_get_json(opener, ep, origin)
-            xml_url = data.get('src') or (data.get('result') or {}).get('src')
-            if not xml_url:
-                continue
-            mp3 = _resolve_xml_to_mp3(opener, xml_url)
-            if mp3:
-                return mp3
-        except Exception:
-            continue
-    return None
-
-
 # ─────────────────────── Public entry point ───────────────────────
 
 def download(url: str,
              output_dir: str,
-             cookies_browser: Optional[str],
+             token: Optional[str],
              info_cb: Callable[[dict], None],
              progress_cb: Callable[[dict], None],
              cancel_check: Callable[[], bool]) -> str:
     if cancel_check():
         raise YMCancelled()
-    opener = _make_opener(cookies_browser)
-    parsed = _parse_url(url)
-    origin = parsed['origin']
 
+    parsed = _parse_url(url)
+
+    # Single track
     if parsed['type'] == 'track':
-        track = _fetch_single(opener, origin, parsed['trackId'], parsed.get('albumId'))
+        track = _fetch_single_track(parsed['trackId'], parsed.get('albumId'), token)
         title = track.get('title') or f"Track {track['trackId']}"
         info_cb({
             'title': title,
@@ -231,22 +206,37 @@ def download(url: str,
             'extractor_key': 'YandexMusic',
             'extractor': 'yandexmusic',
         })
-        out_path = _download_one(opener, track, Path(output_dir), progress_cb, cancel_check)
-        return str(out_path)
+        if not token:
+            raise RuntimeError(
+                'Я.Музыка требует OAuth-токен для скачивания (download-info → 403). '
+                'Получите токен: ' + OAUTH_URL + ' и вставьте в поле «Я.Музыка токен».'
+            )
+        return str(_download_one(track, Path(output_dir), token, progress_cb, cancel_check))
 
+    # Album / playlist (batch)
     if parsed['type'] == 'album':
-        tracks = _fetch_album(opener, origin, parsed['albumId'])
-        folder_label = f'album_{parsed["albumId"]}'
+        tracks = _fetch_album(parsed['albumId'], token)
+        folder_label = f"album_{parsed['albumId']}"
     elif parsed['type'] == 'playlist':
-        tracks = _fetch_playlist(opener, origin, parsed['owner'], parsed['kinds'])
-        folder_label = f'playlist_{parsed["owner"]}_{parsed["kinds"]}'
+        if parsed.get('uuid'):
+            tracks = _fetch_playlist_uuid(parsed['uuid'], token)
+            folder_label = f"playlist_{parsed['uuid'][:8]}"
+        else:
+            tracks = _fetch_playlist_legacy(parsed['owner'], parsed['kinds'], token)
+            folder_label = f"playlist_{parsed['owner']}_{parsed['kinds']}"
     else:
         raise RuntimeError('Неподдерживаемый тип Я.Музыки')
 
     if not tracks:
         raise RuntimeError(
-            'Треки не найдены. Если это приватный/премиум плейлист — '
-            'выберите Cookies → ваш браузер и попробуйте снова.'
+            'Треки не найдены. Если плейлист приватный — нужен токен '
+            'с доступом этого юзера (вставьте в поле «Я.Музыка токен»).'
+        )
+
+    if not token:
+        raise RuntimeError(
+            'Метаданные получены, но для скачивания нужен OAuth-токен. '
+            'Получите: ' + OAUTH_URL + ' и вставьте в поле «Я.Музыка токен».'
         )
 
     artist0 = tracks[0].get('artist') or 'Yandex Music'
@@ -270,7 +260,7 @@ def download(url: str,
         progress_cb({'status': 'downloading', 'message': label,
                      'batch_current': i, 'batch_total': total})
         try:
-            p = _download_one(opener, t, out_dir, progress_cb, cancel_check)
+            p = _download_one(t, out_dir, token, progress_cb, cancel_check)
             last_path = str(p)
         except YMCancelled:
             raise
@@ -280,24 +270,22 @@ def download(url: str,
     return last_path
 
 
-def _download_one(opener, track: dict, out_dir: Path,
+def _download_one(track: dict, out_dir: Path, token: str,
                   progress_cb: Callable, cancel_check: Callable) -> Path:
     if cancel_check():
         raise YMCancelled()
-    audio_url = _get_audio_url(opener, track)
+    audio_url = _resolve_audio_url(track, token)
     if not audio_url:
-        raise RuntimeError(f'нет аудио URL (трек {track["trackId"]}, возможно нужны cookies)')
+        raise RuntimeError(f'Я.Музыка: нет audio URL для трека {track["trackId"]}')
 
     artist = _sanitize(track.get('artist', ''))
-    title = _sanitize(track.get('title', '')) or f'track_{track["trackId"]}'
+    title = _sanitize(track.get('title', '')) or f"track_{track['trackId']}"
     name = f'{artist} - {title}.mp3' if artist else f'{title}.mp3'
     out_path = out_dir / name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    req = urllib.request.Request(audio_url, headers={
-        'User-Agent': 'Mozilla/5.0 MusicDownloader/3.1',
-    })
-    with opener.open(req, timeout=60) as resp:
+    req = urllib.request.Request(audio_url, headers=_headers(None))
+    with urllib.request.urlopen(req, timeout=60) as resp:
         total = int(resp.headers.get('Content-Length') or 0) or None
         downloaded = 0
         with open(out_path, 'wb') as f:
