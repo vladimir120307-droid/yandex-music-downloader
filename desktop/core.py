@@ -124,6 +124,7 @@ class DownloadWorker(QObject):
     def _run_yandex_music(self):
         output_dir = self.options.get('output_dir') or str(Path.home() / 'Downloads')
         token = self.options.get('yam_token') or ''
+        quality = self.options.get('yam_quality') or 'auto'
         final_path = yandex_music.download(
             self.url,
             output_dir,
@@ -131,5 +132,6 @@ class DownloadWorker(QObject):
             info_cb=lambda info: self.info_ready.emit(self.job_id, info),
             progress_cb=lambda p: self.progress.emit(self.job_id, p),
             cancel_check=lambda: self._cancel,
+            quality=quality,
         )
         self.done.emit(self.job_id, final_path)
