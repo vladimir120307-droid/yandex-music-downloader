@@ -269,13 +269,13 @@ class MainWindow(QMainWindow):
         )
         yam_qual_row.addWidget(yam_qual_label)
         self.yam_quality_combo = QComboBox()
-        self.yam_quality_combo.addItem('Авто — FLAC если есть, иначе MP3 320', 'auto')
-        self.yam_quality_combo.addItem('FLAC (lossless, нужен Я.Плюс)', 'flac')
+        self.yam_quality_combo.addItem('Авто (MP3 320)', 'auto')
         self.yam_quality_combo.addItem('MP3 320 kbps', 'mp3-320')
         self.yam_quality_combo.setToolTip(
-            'Авто — лучшее доступное (FLAC если у тебя Плюс и есть lossless, иначе MP3 320).\n'
-            'FLAC — строго lossless. ~30-50 МБ/трек. Если у трека/токена нет — будет ошибка.\n'
-            'MP3 320 — ~10 МБ/трек, работает у всех включая бесплатных.'
+            'MP3 320 kbps — ~10 МБ/трек. Звучит как lossless на 99% устройств.\n\n'
+            '⚠ FLAC временно недоступен: Яндекс ограничил lossless только для официальных\n'
+            'мобильных приложений (требуется device attestation которую десктоп/расширение\n'
+            'не могут дать). Любые сторонние программы получают 403 на FLAC.'
         )
         self.yam_quality_combo.currentIndexChanged.connect(self._save_settings)
         yam_qual_row.addWidget(self.yam_quality_combo)
