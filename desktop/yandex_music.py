@@ -19,8 +19,10 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -28,6 +30,7 @@ from typing import Callable, Optional
 
 API_BASE = 'https://api.music.yandex.net'
 SIGN_SALT = 'XGRlBW9FXlekgbPrRHuSiA'
+V2_HMAC_KEY = b'p93jhgh689SBReK6ghtw62'
 OAUTH_URL = (
     'https://oauth.yandex.ru/authorize?response_type=token'
     '&client_id=23cabbbdc6cd418abb4b39c32c41195d'
@@ -211,25 +214,72 @@ def _pick_stream(dl_info: list, quality: str) -> Optional[dict]:
 
 # ─────────────────────── Audio URL resolution ───────────────────────
 
+def _get_file_info_v2(track_id: str, token: str, quality: str = 'lossless') -> Optional[dict]:
+    """Новый эндпоинт /get-file-info с HMAC-подписью. Даёт прямой URL для FLAC
+    при наличии мобильного OAuth-токена. Возвращает result-словарь или None если
+    эндпоинт отказал."""
+    ts = int(time.time())
+    codecs = 'flac,aac,mp3'
+    transports = 'raw'
+    sign = hmac.new(V2_HMAC_KEY, f'{ts}{track_id}{codecs}{transports}'.encode(), hashlib.sha256).hexdigest()
+    url = (f'{API_BASE}/get-file-info?ts={ts}&trackId={track_id}'
+           f'&quality={quality}&codecs={codecs}&transports={transports}&sign={sign}')
+    try:
+        req = urllib.request.Request(url, headers=_headers(token))
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        return data.get('result', data)
+    except urllib.error.HTTPError as e:
+        body = ''
+        try:
+            body = e.read().decode('utf-8', errors='replace')[:200]
+        except Exception:
+            pass
+        raise RuntimeError(f'/get-file-info {e.code}: {body}')
+
+
 def _resolve_audio_url(track: dict, token: str, quality: str = 'auto') -> Optional[tuple]:
     """Returns (url, codec) or None. Raises RuntimeError если FLAC запрошен но недоступен."""
+    # V2 для FLAC и Auto
+    if quality in ('flac', 'auto', '', None):
+        try:
+            v2 = _get_file_info_v2(track['trackId'], token, 'lossless')
+            v2_codec = _norm_codec(v2.get('codec') if v2 else '')
+            v2_urls = v2.get('urls') if v2 else None
+            v2_url = v2_urls[0] if v2_urls else v2.get('downloadInfoUrl') if v2 else None
+            if v2_url and v2_codec:
+                if quality != 'flac' or v2_codec == 'flac':
+                    print(f"[YM] V2: {v2_codec} {v2.get('bitrate')}kbps · direct URL")
+                    return (v2_url, v2_codec)
+                print(f"[YM] V2 вернул не-FLAC ({v2_codec}), fallback на V1")
+        except Exception as e:
+            print(f"[YM] V2 failed: {e}")
+            if quality == 'flac':
+                msg = str(e)
+                is_auth = '403' in msg or 'not-allowed' in msg
+                raise RuntimeError(
+                    'FLAC недоступен: текущий токен не имеет доступа к lossless. '
+                    'Получи мобильный OAuth-токен через кнопку «Получить» — он даёт нужный scope.'
+                    if is_auth else f'FLAC недоступен: {msg}'
+                )
+            # Для auto — fallback на V1
+
+    # V1 — /download-info
     dl_info = _api_get(f"/tracks/{track['trackId']}/download-info", token)
     if not isinstance(dl_info, list) or not dl_info:
         return None
-    print(f"[YM] download-info for {track['trackId']}: " +
+    print(f"[YM] V1 download-info: " +
           ', '.join(f"{i.get('codec')}/{i.get('bitrateInKbps')}kbps" for i in dl_info) +
-          f' · requested quality: {quality}')
+          f' · requested: {quality}')
     pick = _pick_stream(dl_info, quality)
     if not pick:
         if quality == 'flac':
             available = ', '.join(f"{i.get('codec')} {i.get('bitrateInKbps')}" for i in dl_info)
             raise RuntimeError(
-                f'FLAC недоступен для этого трека. API вернуло: {available}. '
-                f'Возможные причины: нет Я.Плюс, у трека нет lossless-мастера, '
-                f'или текущий токен без FLAC-доступа.'
+                f'FLAC недоступен. API вернуло: {available}. Получи мобильный OAuth-токен.'
             )
         return None
-    print(f"[YM] picked: {pick.get('codec')} {pick.get('bitrateInKbps')}kbps")
+    print(f"[YM] V1 picked: {pick.get('codec')} {pick.get('bitrateInKbps')}kbps")
     info_url = pick['downloadInfoUrl']
     info_url += ('&' if '?' in info_url else '?') + 'format=json'
     req = urllib.request.Request(info_url, headers=_headers(None))  # storage.mds.* без авторизации
