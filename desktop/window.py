@@ -233,6 +233,29 @@ class MainWindow(QMainWindow):
         dir_row.addWidget(open_btn)
         layout.addLayout(dir_row)
 
+        # Я.Музыка токен — нужен с мая 2026 (Яндекс снёс старый веб-API)
+        yam_row = QHBoxLayout()
+        yam_label = QLabel('Я.Музыка токен:')
+        yam_label.setToolTip(
+            'OAuth-токен нужен только для Я.Музыки (с мая 2026 другого пути нет).\n'
+            'Для остальных сайтов (YouTube, SoundCloud, и т.д.) поле можно оставить пустым.'
+        )
+        yam_row.addWidget(yam_label)
+        self.yam_token_edit = QLineEdit()
+        self.yam_token_edit.setPlaceholderText('оставьте пусто если не качаете с Я.Музыки')
+        self.yam_token_edit.setEchoMode(QLineEdit.PasswordEchoOnEdit)
+        yam_row.addWidget(self.yam_token_edit, 1)
+        yam_get_btn = QPushButton('Получить')
+        yam_get_btn.setProperty('secondary', True)
+        yam_get_btn.setToolTip('Откроет страницу OAuth Яндекса — авторизуйся, скопируй access_token из URL.')
+        yam_get_btn.clicked.connect(self._open_yam_oauth)
+        yam_row.addWidget(yam_get_btn)
+        yam_save_btn = QPushButton('Сохранить')
+        yam_save_btn.setProperty('secondary', True)
+        yam_save_btn.clicked.connect(self._save_yam_token)
+        yam_row.addWidget(yam_save_btn)
+        layout.addLayout(yam_row)
+
         sep = QFrame(); sep.setObjectName('sep'); sep.setFrameShape(QFrame.HLine)
         layout.addWidget(sep)
 
@@ -280,6 +303,7 @@ class MainWindow(QMainWindow):
         self.dir_edit.setText(self.settings.get('output_dir', default_dir))
         self.mode_combo.setCurrentIndex(self.settings.get('mode', 0) or 0)
         self.cookies_combo.setCurrentIndex(self.settings.get('cookies', 0) or 0)
+        self.yam_token_edit.setText(self.settings.get('yam_token', '') or '')
 
     def _save_settings(self):
         self.settings.set('output_dir', self.dir_edit.text())
@@ -303,6 +327,20 @@ class MainWindow(QMainWindow):
         if d:
             self.dir_edit.setText(d)
             self._save_settings()
+
+    def _open_yam_oauth(self):
+        QDesktopServices.openUrl(QUrl(
+            'https://oauth.yandex.ru/authorize?response_type=token'
+            '&client_id=23cabbbdc6cd418abb4b39c32c41195d'
+        ))
+
+    def _save_yam_token(self):
+        t = (self.yam_token_edit.text() or '').strip()
+        self.settings.set('yam_token', t)
+        if t:
+            self.status_bar.showMessage(f'Я.Музыка токен сохранён ({len(t)} символов)', 4000)
+        else:
+            self.status_bar.showMessage('Я.Музыка токен очищен', 4000)
 
     def _open_dir(self):
         path = self.dir_edit.text()
@@ -408,6 +446,7 @@ class MainWindow(QMainWindow):
             'output_dir': self.dir_edit.text(),
             'ffmpeg_path': self.ffmpeg_path,
             'cookies_browser': cookies,
+            'yam_token': self.settings.get('yam_token', '') or '',
             **mode_opts,
         }
 
