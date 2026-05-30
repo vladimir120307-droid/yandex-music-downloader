@@ -242,8 +242,12 @@ class MainWindow(QMainWindow):
         )
         yam_row.addWidget(yam_label)
         self.yam_token_edit = QLineEdit()
-        self.yam_token_edit.setPlaceholderText('оставьте пусто если не качаете с Я.Музыки')
-        self.yam_token_edit.setEchoMode(QLineEdit.PasswordEchoOnEdit)
+        self.yam_token_edit.setPlaceholderText('токен или ПОЛНЫЙ URL после OAuth (с #access_token=...)')
+        self.yam_token_edit.setToolTip(
+            'Можно вставить просто токен ИЛИ полный URL из адресной строки после авторизации.\n'
+            'Если страница быстро редиректнула — открой History (Ctrl+H), найди URL содержащий\n'
+            'access_token и скопируй полностью. Программа сама вытащит токен.'
+        )
         yam_row.addWidget(self.yam_token_edit, 1)
         yam_get_btn = QPushButton('Получить')
         yam_get_btn.setProperty('secondary', True)
@@ -335,7 +339,15 @@ class MainWindow(QMainWindow):
         ))
 
     def _save_yam_token(self):
-        t = (self.yam_token_edit.text() or '').strip()
+        import re as _re
+        raw = (self.yam_token_edit.text() or '').strip()
+        # Если вставили полный URL после OAuth — вытащим токен из него
+        m = _re.search(r'[#&?]access_token=([A-Za-z0-9_.\-]+)', raw)
+        if m:
+            t = m.group(1)
+            self.yam_token_edit.setText(t)
+        else:
+            t = raw
         self.settings.set('yam_token', t)
         if t:
             self.status_bar.showMessage(f'Я.Музыка токен сохранён ({len(t)} символов)', 4000)

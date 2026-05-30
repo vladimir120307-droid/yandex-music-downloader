@@ -46,6 +46,44 @@ chrome.webRequest.onBeforeRequest.addListener(
 chrome.tabs.onRemoved.addListener((tabId) => { delete capturedAudio[tabId]; });
 
 // ═══════════════════════════════════════
+// YANDEX MUSIC TOKEN — AUTO-CAPTURE FROM OAuth REDIRECT
+// ═══════════════════════════════════════
+// Когда юзер делает OAuth-флоу (через кнопку «Получить токен» в попапе),
+// после авторизации браузер редиректит на URL вида
+// <callback>#access_token=XXX&token_type=bearer&expires_in=...
+// Часто эта страница быстро редиректит дальше и юзер не успевает скопировать.
+// Этот listener ловит URL ЛЮБОЙ вкладки в момент когда там появляется
+// access_token в hash/query, и сохраняет токен автоматически.
+
+const TOKEN_RE = /[#&?]access_token=([A-Za-z0-9_.\-]+)/;
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const url = changeInfo.url || (tab && tab.url) || '';
+  if (!url) return;
+  const m = url.match(TOKEN_RE);
+  if (!m) return;
+  const token = m[1];
+  if (!token || token.length < 20) return;
+
+  chrome.storage.local.get(['yamToken'], (cur) => {
+    if (cur && cur.yamToken === token) return; // already saved
+    chrome.storage.local.set({
+      yamToken: token,
+      yamTokenSource: 'oauth-redirect',
+      yamTokenAt: Date.now(),
+    }, () => {
+      // Бейдж на иконке расширения
+      try {
+        chrome.action.setBadgeText({ text: '✓' });
+        chrome.action.setBadgeBackgroundColor({ color: '#4caf50' });
+        setTimeout(() => { try { chrome.action.setBadgeText({ text: '' }); } catch {} }, 6000);
+      } catch {}
+      console.log('[YMD] auto-captured Yandex Music token from OAuth redirect');
+    });
+  });
+});
+
+// ═══════════════════════════════════════
 // DOWNLOAD HELPERS
 // ═══════════════════════════════════════
 

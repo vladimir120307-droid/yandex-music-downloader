@@ -73,11 +73,11 @@
         </p>
         <button id="get-token-btn" class="token-link-btn">Открыть страницу для получения токена</button>
         <p class="token-hint-small">
-          После клика откроется страница Яндекса. Залогинься (если надо), разреши доступ.
-          Тебя перебросит на <code>music.yandex.ru/#access_token=...</code> — скопируй значение между
-          <code>access_token=</code> и <code>&amp;</code>, вставь сюда.
+          После клика откроется страница Яндекса. Залогинься, нажми «Разрешить».
+          После редиректа расширение <b>сам поймает токен</b> из URL — увидишь зелёную галку ✓ на иконке.
+          Если не поймало — вставь токен или полный URL ниже:
         </p>
-        <input type="text" id="token-input" placeholder="вставь токен сюда" autocomplete="off" spellcheck="false">
+        <input type="text" id="token-input" placeholder="токен ИЛИ полный URL с #access_token=..." autocomplete="off" spellcheck="false">
         <div class="token-actions">
           <button id="token-save-btn" class="token-save-btn">Сохранить</button>
           <button id="token-clear-btn" class="token-clear-btn">Очистить</button>
