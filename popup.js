@@ -133,13 +133,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   tokenSaveBtn?.addEventListener('click', () => {
-    const t = (tokenInput.value || '').trim();
-    if (!t) { showStatus('Токен пустой', 'error'); return; }
-    if (!/^[A-Za-z0-9_\-]{20,}$/.test(t)) {
+    let raw = (tokenInput.value || '').trim();
+    if (!raw) { showStatus('Токен пустой', 'error'); return; }
+    // Принимаем полный URL — вытащим access_token из него
+    const m = raw.match(/[#&?]access_token=([A-Za-z0-9_.\-]+)/);
+    const t = m ? m[1] : raw;
+    if (!/^[A-Za-z0-9_.\-]{20,}$/.test(t)) {
       showStatus('Формат токена не похож на правильный', 'error');
       return;
     }
-    chrome.storage.local.set({ yamToken: t, yamTokenSource: 'manual', yamTokenAt: Date.now() }, () => {
+    chrome.storage.local.set({ yamToken: t, yamTokenSource: m ? 'manual-url' : 'manual', yamTokenAt: Date.now() }, () => {
       tokenInput.value = '';
       refreshTokenStatus();
       showStatus('✓ Токен сохранён', 'success');
