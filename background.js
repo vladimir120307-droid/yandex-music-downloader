@@ -101,13 +101,17 @@ function getSaveAs() {
 }
 
 // Скачать зашифрованный поток (transport=encraw из /get-file-info Я.Музыки),
-// расшифровать AES-CTR с zero-nonce и hex-ключом, сохранить через blob URL.
+// расшифровать AES-CTR с zero-nonce и hex-ключом, сохранить как data: URL.
+//
+// MV3 service worker НЕ имеет URL.createObjectURL (известное ограничение Chrome),
+// поэтому вместо blob URL используем data: URL с base64. chrome.downloads.download
+// принимает их любого размера (ограничено только RAM).
 async function decryptAndDownload(url, key, filename, saveAs) {
   const r = await fetch(url, { credentials: 'omit' });
   if (!r.ok) throw new Error(`fetch encrypted ${r.status}`);
   const encrypted = new Uint8Array(await r.arrayBuffer());
 
-  // hex key → Uint8Array
+  // hex key → bytes
   const keyBytes = new Uint8Array(key.length / 2);
   for (let i = 0; i < keyBytes.length; i++) {
     keyBytes[i] = parseInt(key.substr(i * 2, 2), 16);
@@ -115,20 +119,26 @@ async function decryptAndDownload(url, key, filename, saveAs) {
   const cryptoKey = await crypto.subtle.importKey(
     'raw', keyBytes, { name: 'AES-CTR' }, false, ['decrypt']
   );
-  // 16 байт всего: 12 байт nonce (нули) + 4 байта counter. length=32 bits.
-  // Эквивалент pycryptodome AES.new(key, MODE_CTR, nonce=bytes(12)).
+  // AES-CTR с zero-nonce (12 байт нулей + 4 байта counter). length=32 bits.
   const counter = new Uint8Array(16);
-  const decrypted = await crypto.subtle.decrypt(
+  const decryptedBuf = await crypto.subtle.decrypt(
     { name: 'AES-CTR', counter, length: 32 }, cryptoKey, encrypted
   );
+  const bytes = new Uint8Array(decryptedBuf);
 
-  const blob = new Blob([decrypted]);
-  const blobUrl = URL.createObjectURL(blob);
+  // Конвертация в base64 чанками — чтобы не упасть на stack overflow в apply().
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  const base64 = btoa(binary);
+  const dataUrl = `data:application/octet-stream;base64,${base64}`;
+
   return new Promise(resolve => {
-    chrome.downloads.download({ url: blobUrl, filename, saveAs: !!saveAs }, (id) => {
-      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch {} }, 30000);
+    chrome.downloads.download({ url: dataUrl, filename, saveAs: !!saveAs }, (id) => {
       if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message });
-      else resolve({ ok: true, downloadId: id, size: decrypted.byteLength });
+      else resolve({ ok: true, downloadId: id, size: bytes.length });
     });
   });
 }
