@@ -59,33 +59,43 @@
     }
   }
 
-  // HMAC-ключ для V2 (/get-file-info) — из публичных yandex-music API реверсов
+  // HMAC-ключ для V2 (/get-file-info) — DEFAULT_SIGN_KEY из yandex-music-api
   const V2_HMAC_KEY = 'p93jhgh689SBReK6ghtw62';
+  // Codecs включают flac-mp4 и he-aac-mp4 — это разные контейнеры/кодировки
+  const V2_CODECS = 'flac,flac-mp4,mp3,aac,he-aac,aac-mp4,he-aac-mp4';
+  const V2_TRANSPORTS = 'encraw';  // encrypted raw — нужна AES-CTR расшифровка
 
-  async function hmacSha256Hex(keyStr, msgStr) {
+  function bytesToBase64(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+
+  // Подпись для /get-file-info: base64(HMAC-SHA256(KEY, values_joined_without_commas))[:-1]
+  // Формат строгий — codecs передаются с запятыми в URL, но в сообщении подписи
+  // запятые удаляются (особенность Yandex API).
+  async function makeV2Sign(ts, trackId) {
+    const codecsNoSep = V2_CODECS.replace(/,/g, '');
+    const msg = `${ts}${trackId}lossless${codecsNoSep}${V2_TRANSPORTS}`;
     const enc = new TextEncoder();
     const key = await crypto.subtle.importKey(
-      'raw', enc.encode(keyStr),
+      'raw', enc.encode(V2_HMAC_KEY),
       { name: 'HMAC', hash: 'SHA-256' },
       false, ['sign']
     );
-    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msgStr));
-    return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
+    const b64 = bytesToBase64(new Uint8Array(sig));
+    return b64.slice(0, -1);  // Yandex срезает последний символ (характерная особенность API)
   }
 
-  async function getFileInfoV2(trackId, token, quality) {
-    // Новый эндпоинт api.music.yandex.net/get-file-info с HMAC-подписью.
-    // Возвращает прямой URL (без MD5-sign дополнительного), и поддерживает FLAC
-    // для мобильных OAuth-токенов (web-токен → 403 not-allowed).
+  async function getFileInfoV2(trackId, token) {
     const ts = Math.floor(Date.now() / 1000);
-    const codecs = 'flac,aac,mp3';
-    const transports = 'raw';
-    const sign = await hmacSha256Hex(V2_HMAC_KEY, `${ts}${trackId}${codecs}${transports}`);
+    const sign = await makeV2Sign(ts, trackId);
     const url = `${API_BASE}/get-file-info?ts=${ts}&trackId=${trackId}` +
-      `&quality=${encodeURIComponent(quality)}` +
-      `&codecs=${encodeURIComponent(codecs)}` +
-      `&transports=${encodeURIComponent(transports)}` +
-      `&sign=${sign}`;
+      `&quality=lossless` +
+      `&codecs=${encodeURIComponent(V2_CODECS)}` +
+      `&transports=${V2_TRANSPORTS}` +
+      `&sign=${encodeURIComponent(sign)}`;
     const resp = await fetch(url, { headers: authHeaders(token) });
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
@@ -94,7 +104,8 @@
       throw new Error(`/get-file-info ${resp.status} ${name || text.slice(0, 100)}`);
     }
     const data = await resp.json();
-    return data.result || data;
+    const info = (data.result && data.result.downloadInfo) || data.downloadInfo || data.result || data;
+    return info;
   }
 
   function normCodec(s) { return String(s || '').toLowerCase(); }
@@ -219,40 +230,40 @@
     const token = await getToken();
 
     if (token) {
-      // Для FLAC и Auto — сначала пробуем V2 эндпоинт /get-file-info (даёт прямой
-      // URL для FLAC). Если токен мобильный (OAuth client_id Яндекс.Музыки) —
-      // получим lossless. Если web-токен — будет 403 not-allowed, фоллбек на V1.
+      // V2 (/get-file-info, encraw) — единственный путь для FLAC. Поток зашифрован
+      // AES-CTR, ключ приходит в ответе → расшифровываем перед сохранением.
       if (quality === 'flac' || quality === 'auto' || !quality) {
         try {
-          const v2 = await getFileInfoV2(track.trackId, token, 'lossless');
-          const v2url = v2?.urls?.[0] || v2?.downloadInfoUrl;
+          const v2 = await getFileInfoV2(track.trackId, token);
+          const v2url = v2?.urls?.[0];
           const v2codec = normCodec(v2?.codec);
-          if (v2url && v2codec) {
-            // Если запросили строго FLAC и получили его — отдаём
-            // Если Auto — отдаём что есть (это лучшее что V2 выдал)
-            if (quality !== 'flac' || v2codec === 'flac') {
-              track._codec = v2.codec;
+          const v2key = v2?.key;
+          if (v2url && v2codec && v2key) {
+            const isFlacResult = v2codec === 'flac' || v2codec === 'flac-mp4';
+            if (quality !== 'flac' || isFlacResult) {
+              track._codec = isFlacResult ? 'flac' : v2codec;
               track._bitrate = v2.bitrate;
-              console.log('[YMD] V2 endpoint:', v2.codec, v2.bitrate, 'kbps · direct URL');
-              return v2url;
+              console.log('[YMD] V2:', v2codec, v2.bitrate, 'kbps · encrypted (AES-CTR)');
+              return {
+                url: v2url,
+                key: v2key,
+                codec: track._codec,
+                bitrate: v2.bitrate,
+                encrypted: true,
+              };
             }
-            console.log('[YMD] V2 вернул не-FLAC (' + v2.codec + '), хотя запросили FLAC. Fallback на V1.');
+            console.log('[YMD] V2 returned non-FLAC (' + v2codec + '), falling back to V1');
           }
         } catch (err) {
-          console.warn('[YMD] V2 endpoint failed:', err.message);
+          console.warn('[YMD] V2 failed:', err.message);
           if (quality === 'flac') {
-            // Строгий FLAC — без V2 не получится. Внятная ошибка.
             const isAuth = /403|not-allowed/i.test(err.message);
             throw new Error(
               isAuth
-                ? 'FLAC недоступен: текущий токен не имеет доступа к lossless. ' +
-                  'Нажми в попапе «Открыть страницу для получения токена» — это ' +
-                  'мобильный OAuth-флоу, он даёт нужный scope для FLAC. ' +
-                  '(Авто-захваченный токен с music.yandex.ru — это web-сессия, у неё нет FLAC.)'
+                ? 'FLAC недоступен: токен без lossless-доступа. Попробуй: 1) залогиниться на music.yandex.ru заново; 2) если есть мобильный Я.Плюс — пройти OAuth заново.'
                 : 'FLAC недоступен: ' + err.message
             );
           }
-          // Для Auto — продолжаем в V1 path
         }
       }
 

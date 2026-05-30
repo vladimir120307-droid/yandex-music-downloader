@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -31,6 +32,8 @@ from typing import Callable, Optional
 API_BASE = 'https://api.music.yandex.net'
 SIGN_SALT = 'XGRlBW9FXlekgbPrRHuSiA'
 V2_HMAC_KEY = b'p93jhgh689SBReK6ghtw62'
+V2_CODECS = 'flac,flac-mp4,mp3,aac,he-aac,aac-mp4,he-aac-mp4'
+V2_TRANSPORTS = 'encraw'
 OAUTH_URL = (
     'https://oauth.yandex.ru/authorize?response_type=token'
     '&client_id=23cabbbdc6cd418abb4b39c32c41195d'
@@ -214,21 +217,35 @@ def _pick_stream(dl_info: list, quality: str) -> Optional[dict]:
 
 # ─────────────────────── Audio URL resolution ───────────────────────
 
-def _get_file_info_v2(track_id: str, token: str, quality: str = 'lossless') -> Optional[dict]:
-    """Новый эндпоинт /get-file-info с HMAC-подписью. Даёт прямой URL для FLAC
-    при наличии мобильного OAuth-токена. Возвращает result-словарь или None если
-    эндпоинт отказал."""
+def _make_v2_sign(ts: int, track_id: str) -> str:
+    """Подпись base64(HMAC-SHA256)[:-1] от склейки значений без запятых."""
+    codecs_nosep = V2_CODECS.replace(',', '')
+    msg = f'{ts}{track_id}lossless{codecs_nosep}{V2_TRANSPORTS}'
+    digest = hmac.new(V2_HMAC_KEY, msg.encode('utf-8'), hashlib.sha256).digest()
+    return base64.b64encode(digest).decode('ascii')[:-1]
+
+
+def _get_file_info_v2(track_id: str, token: str) -> Optional[dict]:
+    """/get-file-info с правильной подписью. Возвращает downloadInfo dict
+    (codec, urls[], key, bitrate, transport=encraw)."""
     ts = int(time.time())
-    codecs = 'flac,aac,mp3'
-    transports = 'raw'
-    sign = hmac.new(V2_HMAC_KEY, f'{ts}{track_id}{codecs}{transports}'.encode(), hashlib.sha256).hexdigest()
-    url = (f'{API_BASE}/get-file-info?ts={ts}&trackId={track_id}'
-           f'&quality={quality}&codecs={codecs}&transports={transports}&sign={sign}')
+    sign = _make_v2_sign(ts, track_id)
+    params = urllib.parse.urlencode({
+        'ts': ts,
+        'trackId': track_id,
+        'quality': 'lossless',
+        'codecs': V2_CODECS,
+        'transports': V2_TRANSPORTS,
+        'sign': sign,
+    })
+    url = f'{API_BASE}/get-file-info?{params}'
     try:
         req = urllib.request.Request(url, headers=_headers(token))
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode('utf-8'))
-        return data.get('result', data)
+        info = data.get('result', data)
+        # response shape: {"result": {"downloadInfo": {...}}} или просто {...}
+        return info.get('downloadInfo', info) if isinstance(info, dict) else None
     except urllib.error.HTTPError as e:
         body = ''
         try:
@@ -238,19 +255,36 @@ def _get_file_info_v2(track_id: str, token: str, quality: str = 'lossless') -> O
         raise RuntimeError(f'/get-file-info {e.code}: {body}')
 
 
+def _aes_ctr_decrypt(data: bytes, hex_key: str) -> bytes:
+    """AES-CTR расшифровка с zero-nonce (как в pycryptodome AES.MODE_CTR с nonce=bytes(12))."""
+    try:
+        from Crypto.Cipher import AES
+    except ImportError:
+        raise RuntimeError(
+            'Для FLAC нужна библиотека pycryptodome. Установи: pip install pycryptodome'
+        )
+    key = bytes.fromhex(hex_key)
+    cipher = AES.new(key=key, nonce=bytes(12), mode=AES.MODE_CTR)
+    return cipher.decrypt(data)
+
+
 def _resolve_audio_url(track: dict, token: str, quality: str = 'auto') -> Optional[tuple]:
-    """Returns (url, codec) or None. Raises RuntimeError если FLAC запрошен но недоступен."""
-    # V2 для FLAC и Auto
+    """Returns (url, codec, encrypted_key) or None.
+    Если encrypted_key != None — поток зашифрован AES-CTR, надо расшифровать."""
+    # V2 для FLAC и Auto: возвращает зашифрованный поток + ключ
     if quality in ('flac', 'auto', '', None):
         try:
-            v2 = _get_file_info_v2(track['trackId'], token, 'lossless')
+            v2 = _get_file_info_v2(track['trackId'], token)
             v2_codec = _norm_codec(v2.get('codec') if v2 else '')
             v2_urls = v2.get('urls') if v2 else None
-            v2_url = v2_urls[0] if v2_urls else v2.get('downloadInfoUrl') if v2 else None
-            if v2_url and v2_codec:
-                if quality != 'flac' or v2_codec == 'flac':
-                    print(f"[YM] V2: {v2_codec} {v2.get('bitrate')}kbps · direct URL")
-                    return (v2_url, v2_codec)
+            v2_url = v2_urls[0] if v2_urls else None
+            v2_key = v2.get('key') if v2 else None
+            if v2_url and v2_codec and v2_key:
+                is_flac = v2_codec in ('flac', 'flac-mp4')
+                if quality != 'flac' or is_flac:
+                    final_codec = 'flac' if is_flac else v2_codec
+                    print(f"[YM] V2: {v2_codec} {v2.get('bitrate')}kbps · encrypted (AES-CTR)")
+                    return (v2_url, final_codec, v2_key)
                 print(f"[YM] V2 вернул не-FLAC ({v2_codec}), fallback на V1")
         except Exception as e:
             print(f"[YM] V2 failed: {e}")
@@ -258,11 +292,10 @@ def _resolve_audio_url(track: dict, token: str, quality: str = 'auto') -> Option
                 msg = str(e)
                 is_auth = '403' in msg or 'not-allowed' in msg
                 raise RuntimeError(
-                    'FLAC недоступен: текущий токен не имеет доступа к lossless. '
-                    'Получи мобильный OAuth-токен через кнопку «Получить» — он даёт нужный scope.'
+                    'FLAC недоступен: токен без lossless-доступа. '
+                    'Попробуй залогиниться на music.yandex.ru заново и пройти OAuth.'
                     if is_auth else f'FLAC недоступен: {msg}'
                 )
-            # Для auto — fallback на V1
 
     # V1 — /download-info
     dl_info = _api_get(f"/tracks/{track['trackId']}/download-info", token)
@@ -296,7 +329,8 @@ def _resolve_audio_url(track: dict, token: str, quality: str = 'auto') -> Option
     if not host or not path or s is None or ts is None:
         return None
     sign = hashlib.md5((SIGN_SALT + path[1:] + s).encode('utf-8')).hexdigest()
-    return (f'https://{host}/get-mp3/{sign}/{ts}{path}', pick.get('codec', 'mp3'))
+    # V1 returns plain URL (no encryption key)
+    return (f'https://{host}/get-mp3/{sign}/{ts}{path}', pick.get('codec', 'mp3'), None)
 
 
 # ─────────────────────── Public entry point ───────────────────────
@@ -395,7 +429,7 @@ def _download_one(track: dict, out_dir: Path, token: str,
     result = _resolve_audio_url(track, token, quality)
     if not result:
         raise RuntimeError(f'Я.Музыка: нет audio URL для трека {track["trackId"]}')
-    audio_url, codec = result
+    audio_url, codec, encryption_key = result
     ext = _ext_for_codec(codec)
 
     artist = _sanitize(track.get('artist', ''))
@@ -407,20 +441,37 @@ def _download_one(track: dict, out_dir: Path, token: str,
     req = urllib.request.Request(audio_url, headers=_headers(None))
     with urllib.request.urlopen(req, timeout=60) as resp:
         total = int(resp.headers.get('Content-Length') or 0) or None
-        downloaded = 0
-        with open(out_path, 'wb') as f:
+        if encryption_key:
+            # V2 поток — зашифрован, читаем всё в память, расшифровываем, пишем.
+            chunks = []
+            downloaded = 0
             while True:
                 if cancel_check():
                     raise YMCancelled()
-                chunk = resp.read(128 * 1024)
+                chunk = resp.read(256 * 1024)
                 if not chunk:
                     break
-                f.write(chunk)
+                chunks.append(chunk)
                 downloaded += len(chunk)
-                progress_cb({
-                    'status': 'downloading',
-                    'downloaded_bytes': downloaded,
-                    'total_bytes': total,
-                })
+                progress_cb({'status': 'downloading',
+                             'downloaded_bytes': downloaded, 'total_bytes': total})
+            encrypted = b''.join(chunks)
+            decrypted = _aes_ctr_decrypt(encrypted, encryption_key)
+            with open(out_path, 'wb') as f:
+                f.write(decrypted)
+        else:
+            # V1 — поток нешифрованный, стримим напрямую в файл
+            downloaded = 0
+            with open(out_path, 'wb') as f:
+                while True:
+                    if cancel_check():
+                        raise YMCancelled()
+                    chunk = resp.read(128 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    progress_cb({'status': 'downloading',
+                                 'downloaded_bytes': downloaded, 'total_bytes': total})
     progress_cb({'status': 'finished'})
     return out_path

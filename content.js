@@ -113,19 +113,42 @@
     });
   }
 
+  async function dispatchDownload(result, filename) {
+    // result либо строка (прямой URL), либо {url, key, encrypted} для AES-CTR потока.
+    if (result && typeof result === 'object' && result.encrypted && result.key) {
+      return new Promise((resolve) => {
+        chrome.runtime.sendMessage(
+          { action: 'downloadEncrypted', url: result.url, key: result.key, filename, saveAs: false },
+          (resp) => {
+            if (chrome.runtime.lastError) resolve({ success: false, error: chrome.runtime.lastError.message });
+            else if (resp?.ok) resolve({ success: true, filename });
+            else resolve({ success: false, error: resp?.error || 'decrypt failed' });
+          }
+        );
+      });
+    }
+    const url = typeof result === 'string' ? result : result?.url;
+    if (!url) return { success: false, error: 'нет URL' };
+    return await downloadFile(url, filename);
+  }
+
   async function downloadCurrentTrack() {
     const info = getCurrentPlayerInfo();
     if (!info.trackId) { showNotification('Включите трек', 'error'); return { success: false, error: 'Нет трека' }; }
     try {
       showNotification('Получаю аудио...', 'loading');
       const track = { trackId: info.trackId, albumId: info.albumId, title: info.title, artist: info.artist, origin: ORIGIN };
-      const audioUrl = await yandex.getAudioUrl(track, { preferCaptured: true, getCapturedAudio });
-      if (!audioUrl) {
+      const result = await yandex.getAudioUrl(track, { preferCaptured: true, getCapturedAudio });
+      if (!result) {
         showNotification('Нет URL. Переключите трек и попробуйте снова.', 'error');
         return { success: false, error: 'Нет URL. Переключите трек.' };
       }
       const fn = yandex.getFilename(track) || `track_${info.trackId}.mp3`;
-      await downloadFile(audioUrl, fn);
+      const dl = await dispatchDownload(result, fn);
+      if (!dl.success) {
+        showNotification('Ошибка скачки: ' + (dl.error || ''), 'error');
+        return dl;
+      }
       const qualityLabel = track._codec ? ` [${String(track._codec).toUpperCase()}${track._bitrate ? ' ' + track._bitrate : ''}]` : '';
       showNotification('✓ ' + fn + qualityLabel, 'success');
       return { success: true, filename: fn };
@@ -139,11 +162,16 @@
     try {
       showNotification('Получаю ссылку...', 'loading');
       const track = { trackId, albumId, title: titleInfo?.title || '', artist: titleInfo?.artist || '', origin: ORIGIN };
-      const audioUrl = await yandex.getAudioUrl(track, {});
-      if (audioUrl) {
+      const result = await yandex.getAudioUrl(track, {});
+      if (result) {
         const fn = yandex.getFilename(track) || `track_${trackId}.mp3`;
-        await downloadFile(audioUrl, fn);
-        showNotification('✓ ' + fn, 'success');
+        const dl = await dispatchDownload(result, fn);
+        if (!dl.success) {
+          showNotification('Ошибка: ' + (dl.error || ''), 'error');
+          return dl;
+        }
+        const qualityLabel = track._codec ? ` [${String(track._codec).toUpperCase()}]` : '';
+        showNotification('✓ ' + fn + qualityLabel, 'success');
         return { success: true, filename: fn };
       }
       showNotification('Включите этот трек, затем нажмите скачать снова', 'error');
