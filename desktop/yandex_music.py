@@ -141,8 +141,8 @@ def _shape_track(t: dict, default_album: str = '') -> dict:
     }
 
 
-def _cover_url_https(uri: str, size: str = '400x400') -> Optional[str]:
-    """avatars.yandex.net/.../%% → https://avatars.yandex.net/.../400x400"""
+def _cover_url_https(uri: str, size: str = '600x600') -> Optional[str]:
+    """avatars.yandex.net/.../%% → https://avatars.yandex.net/.../600x600"""
     if not uri:
         return None
     if not uri.startswith('http'):
@@ -150,7 +150,7 @@ def _cover_url_https(uri: str, size: str = '400x400') -> Optional[str]:
     return uri.replace('%%', size)
 
 
-def _fetch_cover_bytes(uri: str, size: str = '400x400') -> Optional[bytes]:
+def _fetch_cover_bytes(uri: str, size: str = '600x600') -> Optional[bytes]:
     url = _cover_url_https(uri, size)
     if not url:
         return None
