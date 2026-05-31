@@ -1,4 +1,5 @@
 PySide6>=6.5
 yt-dlp>=2024.10.07
 pycryptodome>=3.20.0
+mutagen>=1.47.0
 

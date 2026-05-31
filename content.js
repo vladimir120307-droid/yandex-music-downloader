@@ -113,23 +113,31 @@
     });
   }
 
-  async function dispatchDownload(result, filename) {
-    // result либо строка (прямой URL), либо {url, key, encrypted} для AES-CTR потока.
-    if (result && typeof result === 'object' && result.encrypted && result.key) {
-      return new Promise((resolve) => {
-        chrome.runtime.sendMessage(
-          { action: 'downloadEncrypted', url: result.url, key: result.key, filename, saveAs: false },
-          (resp) => {
-            if (chrome.runtime.lastError) resolve({ success: false, error: chrome.runtime.lastError.message });
-            else if (resp?.ok) resolve({ success: true, filename });
-            else resolve({ success: false, error: resp?.error || 'decrypt failed' });
-          }
-        );
-      });
-    }
+  async function dispatchDownload(result, filename, track) {
+    // result либо строка (прямой URL), либо {url, key, encrypted} для AES-CTR.
+    // track содержит {trackId, title, artist, album, coverUri, _codec, ...} —
+    // прокидываем в background чтобы вшил ID3v2+обложку (для MP3).
     const url = typeof result === 'string' ? result : result?.url;
+    const key = (typeof result === 'object') ? result.key : null;
     if (!url) return { success: false, error: 'нет URL' };
-    return await downloadFile(url, filename);
+
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        action: 'downloadAndTag',
+        url, key, filename,
+        codec: (track && track._codec) || (result && result.codec) || '',
+        coverUri: (track && track.coverUri) || '',
+        title: (track && track.title) || '',
+        artist: (track && track.artist) || '',
+        album: (track && track.album) || '',
+        year: (track && track.year) || '',
+        saveAs: false,
+      }, (resp) => {
+        if (chrome.runtime.lastError) resolve({ success: false, error: chrome.runtime.lastError.message });
+        else if (resp?.ok) resolve({ success: true, filename });
+        else resolve({ success: false, error: resp?.error || 'download failed' });
+      });
+    });
   }
 
   async function downloadCurrentTrack() {
@@ -143,8 +151,10 @@
         showNotification('Нет URL. Переключите трек и попробуйте снова.', 'error');
         return { success: false, error: 'Нет URL. Переключите трек.' };
       }
+      // Дозаполняем coverUri/album/year для тэгов
+      try { await yandex.enrichTrack(track); } catch {}
       const fn = yandex.getFilename(track) || `track_${info.trackId}.mp3`;
-      const dl = await dispatchDownload(result, fn);
+      const dl = await dispatchDownload(result, fn, track);
       if (!dl.success) {
         showNotification('Ошибка скачки: ' + (dl.error || ''), 'error');
         return dl;
@@ -164,8 +174,9 @@
       const track = { trackId, albumId, title: titleInfo?.title || '', artist: titleInfo?.artist || '', origin: ORIGIN };
       const result = await yandex.getAudioUrl(track, {});
       if (result) {
+        try { await yandex.enrichTrack(track); } catch {}
         const fn = yandex.getFilename(track) || `track_${trackId}.mp3`;
-        const dl = await dispatchDownload(result, fn);
+        const dl = await dispatchDownload(result, fn, track);
         if (!dl.success) {
           showNotification('Ошибка: ' + (dl.error || ''), 'error');
           return dl;

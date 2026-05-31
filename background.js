@@ -4,6 +4,7 @@
 importScripts(
   'lib/md5.js',
   'lib/core.js',
+  'lib/id3.js',
   'services/yandex.js',
   'services/bandcamp.js',
   'services/soundcloud.js',
@@ -100,33 +101,63 @@ function getSaveAs() {
   return new Promise(resolve => chrome.storage.local.get('saveAs', d => resolve(!!d.saveAs)));
 }
 
-// Скачать зашифрованный поток (transport=encraw из /get-file-info Я.Музыки),
-// расшифровать AES-CTR с zero-nonce и hex-ключом, сохранить как data: URL.
+// Универсальная скачка + опциональная расшифровка + ID3-тэги.
 //
-// MV3 service worker НЕ имеет URL.createObjectURL (известное ограничение Chrome),
-// поэтому вместо blob URL используем data: URL с base64. chrome.downloads.download
-// принимает их любого размера (ограничено только RAM).
-async function decryptAndDownload(url, key, filename, saveAs) {
-  const r = await fetch(url, { credentials: 'omit' });
-  if (!r.ok) throw new Error(`fetch encrypted ${r.status}`);
-  const encrypted = new Uint8Array(await r.arrayBuffer());
+// MV3 service worker НЕ имеет URL.createObjectURL, поэтому сохраняем через
+// data: URL с base64.
+//
+// opts:
+//   url       — audio URL (зашифрованный если key, иначе прямой)
+//   key       — опц., hex-ключ AES-CTR для расшифровки
+//   codec     — 'mp3'/'flac'/...; для mp3 встраивается ID3v2 APIC
+//   filename  — имя файла для chrome.downloads
+//   coverUri  — опц., 'avatars.yandex.net/.../%%' — заберём cover отсюда
+//   title/artist/album/year — для ID3 тэгов
+//   saveAs    — bool
+async function downloadAndTag(opts) {
+  const r = await fetch(opts.url, { credentials: 'omit' });
+  if (!r.ok) throw new Error(`fetch audio ${r.status}`);
+  let bytes = new Uint8Array(await r.arrayBuffer());
 
-  // hex key → bytes
-  const keyBytes = new Uint8Array(key.length / 2);
-  for (let i = 0; i < keyBytes.length; i++) {
-    keyBytes[i] = parseInt(key.substr(i * 2, 2), 16);
+  // Расшифровка AES-CTR (V2 path Я.Музыки)
+  if (opts.key) {
+    const keyBytes = new Uint8Array(opts.key.length / 2);
+    for (let i = 0; i < keyBytes.length; i++) {
+      keyBytes[i] = parseInt(opts.key.substr(i * 2, 2), 16);
+    }
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw', keyBytes, { name: 'AES-CTR' }, false, ['decrypt']
+    );
+    const counter = new Uint8Array(16);
+    const decryptedBuf = await crypto.subtle.decrypt(
+      { name: 'AES-CTR', counter, length: 32 }, cryptoKey, bytes
+    );
+    bytes = new Uint8Array(decryptedBuf);
   }
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw', keyBytes, { name: 'AES-CTR' }, false, ['decrypt']
-  );
-  // AES-CTR с zero-nonce (12 байт нулей + 4 байта counter). length=32 bits.
-  const counter = new Uint8Array(16);
-  const decryptedBuf = await crypto.subtle.decrypt(
-    { name: 'AES-CTR', counter, length: 32 }, cryptoKey, encrypted
-  );
-  const bytes = new Uint8Array(decryptedBuf);
 
-  // Конвертация в base64 чанками — чтобы не упасть на stack overflow в apply().
+  // Embed ID3v2 + cover — пока только для MP3.
+  // FLAC/FLAC-MP4 — TODO (нужны METADATA_BLOCK_PICTURE / MP4 covr atom).
+  if ((opts.codec || '').toLowerCase() === 'mp3') {
+    let coverBytes = null;
+    if (opts.coverUri) {
+      try {
+        const coverUrl = coverUriToHttps(opts.coverUri, '1000x1000');
+        const cr = await fetch(coverUrl, { credentials: 'omit' });
+        if (cr.ok) coverBytes = new Uint8Array(await cr.arrayBuffer());
+      } catch (e) { console.warn('[YMD] cover fetch failed:', e.message); }
+    }
+    if (coverBytes || opts.title || opts.artist || opts.album) {
+      try {
+        const tag = globalThis.YMD_ID3.buildID3v2({
+          title: opts.title, artist: opts.artist, album: opts.album,
+          year: opts.year, cover: coverBytes, coverMime: 'image/jpeg',
+        });
+        bytes = globalThis.YMD_ID3.prependID3v2ToMP3(bytes, tag);
+      } catch (e) { console.warn('[YMD] ID3 embed failed:', e.message); }
+    }
+  }
+
+  // base64 → data URL → chrome.downloads
   const chunkSize = 0x8000;
   let binary = '';
   for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -136,11 +167,22 @@ async function decryptAndDownload(url, key, filename, saveAs) {
   const dataUrl = `data:application/octet-stream;base64,${base64}`;
 
   return new Promise(resolve => {
-    chrome.downloads.download({ url: dataUrl, filename, saveAs: !!saveAs }, (id) => {
+    chrome.downloads.download({ url: dataUrl, filename: opts.filename, saveAs: !!opts.saveAs }, (id) => {
       if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message });
       else resolve({ ok: true, downloadId: id, size: bytes.length });
     });
   });
+}
+
+function coverUriToHttps(uri, size = '1000x1000') {
+  if (!uri) return null;
+  if (!uri.startsWith('http')) uri = 'https://' + uri;
+  return uri.replace('%%', size);
+}
+
+// Backward-compat alias — старый код где-то ещё может звать decryptAndDownload
+async function decryptAndDownload(url, key, filename, saveAs) {
+  return await downloadAndTag({ url, key, filename, saveAs });
 }
 
 // ═══════════════════════════════════════
@@ -188,13 +230,28 @@ async function downloadByUrl(rawUrl) {
       const filename = service.getFilename(t) || `track.mp3`;
       const fullName = isBatch ? `${folder}/${filename}` : filename;
 
+      // Унификация: всегда идём через downloadAndTag (он вшивает ID3/cover
+      // если codec=mp3 и есть coverUri). Для Bandcamp/SoundCloud где codec
+      // не указан — просто save через data URL без тегов.
+      const audioUrl = typeof result === 'string' ? result : result.url;
+      const encryptedKey = (typeof result === 'object') ? result.key : null;
+      const codecVal = (typeof result === 'object' && result.codec) ? result.codec : (t._codec || '');
       let res;
-      if (typeof result === 'object' && result.encrypted && result.key) {
-        // V2 Я.Музыки: зашифрованный поток, нужно расшифровать
-        res = await decryptAndDownload(result.url, result.key, fullName, saveAs && !isBatch);
-        res = { success: res.ok, error: res.error };
+      if (encryptedKey || (service.name === 'yandex' && t.coverUri)) {
+        const dl = await downloadAndTag({
+          url: audioUrl,
+          key: encryptedKey,
+          codec: codecVal,
+          filename: fullName,
+          coverUri: t.coverUri || '',
+          title: t.title || '',
+          artist: t.artist || '',
+          album: t.album || '',
+          year: t.year || '',
+          saveAs: saveAs && !isBatch,
+        });
+        res = { success: dl.ok, error: dl.error };
       } else {
-        const audioUrl = typeof result === 'string' ? result : result.url;
         res = await chromeDownload(audioUrl, fullName, saveAs && !isBatch);
       }
       if (res.success) downloaded++;
@@ -265,8 +322,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.action === 'downloadEncrypted') {
-    decryptAndDownload(message.url, message.key, message.filename, !!message.saveAs)
+  if (message.action === 'downloadEncrypted' || message.action === 'downloadAndTag') {
+    downloadAndTag({
+      url: message.url,
+      key: message.key,
+      codec: message.codec,
+      filename: message.filename,
+      coverUri: message.coverUri,
+      title: message.title,
+      artist: message.artist,
+      album: message.album,
+      year: message.year,
+      saveAs: !!message.saveAs,
+    })
       .then(res => sendResponse(res))
       .catch(err => sendResponse({ ok: false, error: err.message || String(err) }));
     return true;
