@@ -133,6 +133,13 @@
         year: (track && track.year) || '',
         saveAs: false,
       }, (resp) => {
+        if (resp?.debug) {
+          const d = resp.debug;
+          console.log('[YMD] tag debug — codec:', d.codec, '| coverUri:', d.coverUri ? 'есть' : 'НЕТ',
+            '| coverBytes:', d.coverBytes, '| tagged:', d.tagged,
+            d.coverError ? '| coverError: ' + d.coverError : '',
+            d.tagError ? '| tagError: ' + d.tagError : '');
+        }
         if (chrome.runtime.lastError) resolve({ success: false, error: chrome.runtime.lastError.message });
         else if (resp?.ok) resolve({ success: true, filename });
         else resolve({ success: false, error: resp?.error || 'download failed' });

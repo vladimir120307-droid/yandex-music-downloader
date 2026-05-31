@@ -137,14 +137,23 @@ async function downloadAndTag(opts) {
 
   // Embed ID3v2 + cover — пока только для MP3.
   // FLAC/FLAC-MP4 — TODO (нужны METADATA_BLOCK_PICTURE / MP4 covr atom).
+  const debug = { codec: opts.codec || '', coverUri: opts.coverUri || '', coverBytes: 0, tagged: false };
   if ((opts.codec || '').toLowerCase() === 'mp3') {
     let coverBytes = null;
     if (opts.coverUri) {
       try {
         const coverUrl = coverUriToHttps(opts.coverUri, '1000x1000');
+        console.log('[YMD] fetching cover:', coverUrl);
         const cr = await fetch(coverUrl, { credentials: 'omit' });
-        if (cr.ok) coverBytes = new Uint8Array(await cr.arrayBuffer());
-      } catch (e) { console.warn('[YMD] cover fetch failed:', e.message); }
+        if (cr.ok) {
+          coverBytes = new Uint8Array(await cr.arrayBuffer());
+          debug.coverBytes = coverBytes.length;
+          console.log('[YMD] cover fetched:', coverBytes.length, 'bytes');
+        } else {
+          debug.coverError = 'HTTP ' + cr.status;
+          console.warn('[YMD] cover fetch HTTP', cr.status);
+        }
+      } catch (e) { debug.coverError = e.message; console.warn('[YMD] cover fetch failed:', e.message); }
     }
     if (coverBytes || opts.title || opts.artist || opts.album) {
       try {
@@ -153,7 +162,9 @@ async function downloadAndTag(opts) {
           year: opts.year, cover: coverBytes, coverMime: 'image/jpeg',
         });
         bytes = globalThis.YMD_ID3.prependID3v2ToMP3(bytes, tag);
-      } catch (e) { console.warn('[YMD] ID3 embed failed:', e.message); }
+        debug.tagged = true;
+        console.log('[YMD] ID3 embedded, tag', tag.length, 'bytes, total', bytes.length);
+      } catch (e) { debug.tagError = e.message; console.warn('[YMD] ID3 embed failed:', e.message); }
     }
   }
 
@@ -168,8 +179,8 @@ async function downloadAndTag(opts) {
 
   return new Promise(resolve => {
     chrome.downloads.download({ url: dataUrl, filename: opts.filename, saveAs: !!opts.saveAs }, (id) => {
-      if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message });
-      else resolve({ ok: true, downloadId: id, size: bytes.length });
+      if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message, debug });
+      else resolve({ ok: true, downloadId: id, size: bytes.length, debug });
     });
   });
 }
