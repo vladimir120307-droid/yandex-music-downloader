@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Music Downloader (Я.Музыка / Bandcamp / SoundCloud)",
-  "version": "3.3.0",
+  "version": "3.5.0",
   "description": "Скачивайте треки, альбомы и плейлисты с Яндекс Музыки, Bandcamp и SoundCloud — на странице или по ссылке из попапа.",
   "permissions": [
     "activeTab",
@@ -18,6 +18,8 @@
     "*://music.yandex.by/*",
     "*://music.yandex.ua/*",
     "*://api.music.yandex.net/*",
+    "*://avatars.yandex.net/*",
+    "*://avatars.mds.yandex.net/*",
     "*://*.storage.mds.yandex.net/*",
     "*://storage.mds.yandex.net/*",
     "*://*.storage.yandex.net/*",
@@ -58,6 +60,7 @@
       "js": [
         "lib/md5.js",
         "lib/core.js",
+        "lib/id3.js",
         "services/yandex.js",
         "content.js"
       ],

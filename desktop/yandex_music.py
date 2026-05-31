@@ -127,12 +127,109 @@ def _api_post(path: str, body: str, token: Optional[str]) -> dict:
 # ─────────────────────── Metadata ───────────────────────
 
 def _shape_track(t: dict, default_album: str = '') -> dict:
+    album = (t.get('albums') or [{}])[0] if t.get('albums') else {}
+    # coverUri может быть на треке или на альбоме — берём что есть
+    cover_uri = t.get('coverUri') or album.get('coverUri') or ''
     return {
         'trackId': str(t.get('id') or t.get('realId') or ''),
-        'albumId': str(((t.get('albums') or [{}])[0]).get('id') or default_album or ''),
+        'albumId': str(album.get('id') or default_album or ''),
         'title': t.get('title') or '',
         'artist': ', '.join(a.get('name', '') for a in (t.get('artists') or []) if a.get('name')),
+        'album': album.get('title', ''),
+        'year': album.get('year') or '',
+        'coverUri': cover_uri,
     }
+
+
+def _cover_url_https(uri: str, size: str = '1000x1000') -> Optional[str]:
+    """avatars.yandex.net/.../%% → https://avatars.yandex.net/.../1000x1000"""
+    if not uri:
+        return None
+    if not uri.startswith('http'):
+        uri = 'https://' + uri
+    return uri.replace('%%', size)
+
+
+def _fetch_cover_bytes(uri: str, size: str = '1000x1000') -> Optional[bytes]:
+    url = _cover_url_https(uri, size)
+    if not url:
+        return None
+    try:
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 MusicDownloader/3.5',
+        })
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.read()
+    except Exception as e:
+        print(f'[YM] cover fetch failed: {e}')
+        return None
+
+
+def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
+                              cover_bytes: Optional[bytes]) -> None:
+    """Прописать ID3 / VorbisComment / MP4-atoms с обложкой и тегами."""
+    try:
+        # Авто-детект формата по магическим байтам
+        with open(file_path, 'rb') as f:
+            head = f.read(12)
+    except OSError:
+        return
+
+    title = track.get('title') or ''
+    artist = track.get('artist') or ''
+    album = track.get('album') or ''
+    year = str(track.get('year') or '') or None
+
+    is_mp3 = head[:3] == b'ID3' or (len(head) > 1 and head[0] == 0xff and (head[1] & 0xe0) == 0xe0)
+    is_flac = head[:4] == b'fLaC'
+    is_mp4 = len(head) > 8 and head[4:8] == b'ftyp'
+
+    try:
+        if is_mp3 or (codec == 'mp3' and not is_flac and not is_mp4):
+            from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, TDRC, ID3NoHeaderError
+            try:
+                audio = ID3(file_path)
+            except ID3NoHeaderError:
+                audio = ID3()
+            audio.delall('APIC')
+            if title: audio.add(TIT2(encoding=3, text=title))
+            if artist: audio.add(TPE1(encoding=3, text=artist))
+            if album: audio.add(TALB(encoding=3, text=album))
+            if year: audio.add(TDRC(encoding=3, text=year))
+            if cover_bytes:
+                audio.add(APIC(encoding=3, mime='image/jpeg', type=3, desc='', data=cover_bytes))
+            audio.save(file_path)
+        elif is_flac:
+            from mutagen.flac import FLAC, Picture
+            audio = FLAC(file_path)
+            if title: audio['title'] = title
+            if artist: audio['artist'] = artist
+            if album: audio['album'] = album
+            if year: audio['date'] = year
+            if cover_bytes:
+                pic = Picture()
+                pic.type = 3  # cover front
+                pic.mime = 'image/jpeg'
+                pic.data = cover_bytes
+                audio.clear_pictures()
+                audio.add_picture(pic)
+            audio.save()
+        elif is_mp4:
+            # FLAC-in-MP4, AAC-in-MP4 — общие MP4-atoms
+            from mutagen.mp4 import MP4, MP4Cover
+            audio = MP4(file_path)
+            if title: audio['\xa9nam'] = title
+            if artist: audio['\xa9ART'] = artist
+            if album: audio['\xa9alb'] = album
+            if year: audio['\xa9day'] = year
+            if cover_bytes:
+                audio['covr'] = [MP4Cover(cover_bytes, imageformat=MP4Cover.FORMAT_JPEG)]
+            audio.save()
+        else:
+            print(f'[YM] неизвестный формат для тегирования (head={head[:8].hex()})')
+    except Exception as e:
+        # Не валим скачивание из-за ошибки тегирования — файл уже на диске
+        print(f'[YM] embed metadata failed: {type(e).__name__}: {e}')
 
 
 def _fetch_album(album_id: str, token: Optional[str]) -> list:
@@ -475,5 +572,11 @@ def _download_one(track: dict, out_dir: Path, token: str,
                     downloaded += len(chunk)
                     progress_cb({'status': 'downloading',
                                  'downloaded_bytes': downloaded, 'total_bytes': total})
+    # Вшиваем теги и обложку из Я.Музыки. Если что-то пойдёт не так — лог,
+    # но скачивание всё равно успех.
+    cover_uri = track.get('coverUri') or ''
+    cover_bytes = _fetch_cover_bytes(cover_uri) if cover_uri else None
+    _embed_metadata_and_cover(out_path, codec, track, cover_bytes)
+
     progress_cb({'status': 'finished'})
     return out_path

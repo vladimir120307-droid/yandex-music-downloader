@@ -176,12 +176,16 @@
   }
 
   function shapeTrack(t, defaultAlbumId) {
+    const album = (t.albums || [])[0] || {};
     return {
       trackId: String(t.id || t.realId || ''),
-      albumId: String(((t.albums || [])[0] || {}).id || defaultAlbumId || ''),
+      albumId: String(album.id || defaultAlbumId || ''),
       title: t.title || '',
       artist: (t.artists || []).map(a => a.name).filter(Boolean).join(', '),
       version: t.version || '',
+      album: album.title || '',
+      year: album.year || '',
+      coverUri: t.coverUri || album.coverUri || '',
     };
   }
 
@@ -214,6 +218,24 @@
     const t = (list || [])[0];
     if (t) return shapeTrack(t, albumId);
     return { trackId: String(trackId), albumId: albumId || '', title: '', artist: '' };
+  }
+
+  // Дозаполнение track-метадата (cover/album/year) — для in-page кнопок где
+  // у нас только trackId/albumId/title/artist из DOM, без coverUri.
+  async function enrichTrack(track) {
+    if (track && track.coverUri && track.album) return track; // уже есть
+    if (!track || !track.trackId) return track;
+    try {
+      const token = await getToken();
+      const enriched = await fetchSingleTrack(track.trackId, track.albumId, token);
+      // Сохраняем переданные title/artist если они уже есть (более точные из DOM)
+      track.coverUri = track.coverUri || enriched.coverUri || '';
+      track.album = track.album || enriched.album || '';
+      track.year = track.year || enriched.year || '';
+      track.title = track.title || enriched.title || '';
+      track.artist = track.artist || enriched.artist || '';
+    } catch (e) { console.warn('[YMD] enrichTrack failed:', e.message); }
+    return track;
   }
 
   async function listTracks(parsed) {
@@ -340,6 +362,7 @@
     parseUrl,
     listTracks,
     getAudioUrl,
+    enrichTrack,
     getFilename(track) {
       const ext = extForCodec(track && track._codec);
       return globalThis.YMD.utils.makeFilename(track.artist, track.title, ext) ||
