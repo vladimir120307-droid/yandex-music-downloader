@@ -142,7 +142,7 @@ async function downloadAndTag(opts) {
     let coverBytes = null;
     if (opts.coverUri) {
       try {
-        const coverUrl = coverUriToHttps(opts.coverUri, '1000x1000');
+        const coverUrl = coverUriToHttps(opts.coverUri, '600x600');
         console.log('[YMD] fetching cover:', coverUrl);
         const cr = await fetch(coverUrl, { credentials: 'omit' });
         if (cr.ok) {
@@ -185,7 +185,7 @@ async function downloadAndTag(opts) {
   });
 }
 
-function coverUriToHttps(uri, size = '1000x1000') {
+function coverUriToHttps(uri, size = '600x600') {
   if (!uri) return null;
   if (!uri.startsWith('http')) uri = 'https://' + uri;
   return uri.replace('%%', size);

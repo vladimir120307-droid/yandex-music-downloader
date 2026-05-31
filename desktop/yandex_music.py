@@ -141,8 +141,8 @@ def _shape_track(t: dict, default_album: str = '') -> dict:
     }
 
 
-def _cover_url_https(uri: str, size: str = '1000x1000') -> Optional[str]:
-    """avatars.yandex.net/.../%% → https://avatars.yandex.net/.../1000x1000"""
+def _cover_url_https(uri: str, size: str = '600x600') -> Optional[str]:
+    """avatars.yandex.net/.../%% → https://avatars.yandex.net/.../600x600"""
     if not uri:
         return None
     if not uri.startswith('http'):
@@ -150,7 +150,7 @@ def _cover_url_https(uri: str, size: str = '1000x1000') -> Optional[str]:
     return uri.replace('%%', size)
 
 
-def _fetch_cover_bytes(uri: str, size: str = '1000x1000') -> Optional[bytes]:
+def _fetch_cover_bytes(uri: str, size: str = '600x600') -> Optional[bytes]:
     url = _cover_url_https(uri, size)
     if not url:
         return None
@@ -192,13 +192,16 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
             except ID3NoHeaderError:
                 audio = ID3()
             audio.delall('APIC')
-            if title: audio.add(TIT2(encoding=3, text=title))
-            if artist: audio.add(TPE1(encoding=3, text=artist))
-            if album: audio.add(TALB(encoding=3, text=album))
-            if year: audio.add(TDRC(encoding=3, text=year))
+            # encoding=1 (UTF-16) валиден в ID3v2.3. encoding=3 (UTF-8) невалиден
+            # в 2.3 и Windows Explorer игнорирует такие теги/обложку.
+            if title: audio.add(TIT2(encoding=1, text=title))
+            if artist: audio.add(TPE1(encoding=1, text=artist))
+            if album: audio.add(TALB(encoding=1, text=album))
+            if year: audio.add(TDRC(encoding=1, text=year))
             if cover_bytes:
-                audio.add(APIC(encoding=3, mime='image/jpeg', type=3, desc='', data=cover_bytes))
-            audio.save(file_path)
+                audio.add(APIC(encoding=0, mime='image/jpeg', type=3, desc='', data=cover_bytes))
+            # v2_version=3 — пишем строго ID3v2.3 (Win Explorer читает лучше 2.4)
+            audio.save(file_path, v2_version=3)
         elif is_flac:
             from mutagen.flac import FLAC, Picture
             audio = FLAC(file_path)
