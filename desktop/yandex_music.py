@@ -269,10 +269,10 @@ def _fetch_single_track(track_id: str, album_id: Optional[str], token: Optional[
 
 def _ext_for_codec(codec: str) -> str:
     c = (codec or '').lower()
-    if c == 'flac':
+    if c in ('flac', 'flac-mp4'):
         return 'flac'
-    if c in ('aac', 'he-aac'):
-        return 'aac'
+    if c in ('aac', 'he-aac', 'aac-mp4', 'he-aac-mp4'):
+        return 'm4a'  # AAC-в-MP4 → .m4a (правильное расширение)
     if c == 'opus':
         return 'opus'
     return 'mp3'
@@ -373,21 +373,13 @@ def _aes_ctr_decrypt(data: bytes, hex_key: str) -> bytes:
 def _resolve_audio_url(track: dict, token: str, quality: str = 'auto') -> Optional[tuple]:
     """Returns (url, codec, encrypted_key) or None.
     Если encrypted_key != None — поток зашифрован AES-CTR, надо расшифровать."""
-    # V2 для FLAC и Auto: возвращает зашифрованный поток + ключ
+    # V2 (/get-file-info) — путь ТОЛЬКО для FLAC. Принимаем результат
+    # ИСКЛЮЧИТЕЛЬНО если это FLAC. Если V2 отдаёт aac-mp4/mp3 — это не то что
+    # обещает "Авто" (FLAC → иначе MP3 320), откатываемся на V1 за чистым MP3.
     if quality in ('flac', 'auto', '', None):
+        v2 = None
         try:
             v2 = _get_file_info_v2(track['trackId'], token)
-            v2_codec = _norm_codec(v2.get('codec') if v2 else '')
-            v2_urls = v2.get('urls') if v2 else None
-            v2_url = v2_urls[0] if v2_urls else None
-            v2_key = v2.get('key') if v2 else None
-            if v2_url and v2_codec and v2_key:
-                is_flac = v2_codec in ('flac', 'flac-mp4')
-                if quality != 'flac' or is_flac:
-                    final_codec = 'flac' if is_flac else v2_codec
-                    print(f"[YM] V2: {v2_codec} {v2.get('bitrate')}kbps · encrypted (AES-CTR)")
-                    return (v2_url, final_codec, v2_key)
-                print(f"[YM] V2 вернул не-FLAC ({v2_codec}), fallback на V1")
         except Exception as e:
             print(f"[YM] V2 failed: {e}")
             if quality == 'flac':
@@ -398,6 +390,24 @@ def _resolve_audio_url(track: dict, token: str, quality: str = 'auto') -> Option
                     'Попробуй залогиниться на music.yandex.ru заново и пройти OAuth.'
                     if is_auth else f'FLAC недоступен: {msg}'
                 )
+            # quality='auto' → проглатываем, идём в V1 за MP3
+        if v2:
+            v2_codec = _norm_codec(v2.get('codec'))
+            v2_urls = v2.get('urls')
+            v2_url = v2_urls[0] if v2_urls else None
+            v2_key = v2.get('key')
+            is_flac = v2_codec in ('flac', 'flac-mp4')
+            if v2_url and v2_key and is_flac:
+                print(f"[YM] V2 FLAC: {v2_codec} {v2.get('bitrate')}kbps · encrypted")
+                return (v2_url, 'flac', v2_key)
+            # V2 не дал FLAC
+            if quality == 'flac':
+                raise RuntimeError(
+                    f'FLAC недоступен для этого трека — нет lossless-мастера'
+                    + (f' (API отдаёт только {v2_codec})' if v2_codec else '')
+                    + '. Выбери «MP3 320» или «Авто».'
+                )
+            print(f"[YM] V2 без FLAC ({v2_codec}), беру MP3 320 через V1")
 
     # V1 — /download-info
     dl_info = _api_get(f"/tracks/{track['trackId']}/download-info", token)
