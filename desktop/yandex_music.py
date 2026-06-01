@@ -278,6 +278,41 @@ def _ext_for_codec(codec: str) -> str:
     return 'mp3'
 
 
+def _detect_container(path: Path) -> Optional[str]:
+    """Определить реальный контейнер по магическим байтам файла."""
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(12)
+    except OSError:
+        return None
+    if head[:4] == b'fLaC':
+        return 'flac'           # нативный FLAC
+    if len(head) >= 8 and head[4:8] == b'ftyp':
+        return 'm4a'            # MP4/M4A контейнер (FLAC-in-MP4 или AAC)
+    if head[:3] == b'ID3':
+        return 'mp3'
+    if len(head) >= 2 and head[0] == 0xff and (head[1] & 0xe0) == 0xe0:
+        return 'mp3'
+    return None
+
+
+def _remux_mp4_to_flac(src: Path, dst: Path, ffmpeg_path: str) -> bool:
+    """FLAC-в-MP4 → нативный .flac без перекодирования (-c:a copy, lossless).
+    Возвращает True если успех."""
+    import subprocess
+    try:
+        proc = subprocess.run(
+            [ffmpeg_path, '-y', '-i', str(src), '-c:a', 'copy', '-f', 'flac', str(dst)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120,
+        )
+        if proc.returncode == 0 and dst.exists() and dst.stat().st_size > 0:
+            return True
+        print(f'[YM] ffmpeg remux failed: {proc.stderr.decode("utf-8","replace")[:200]}')
+    except Exception as e:
+        print(f'[YM] ffmpeg remux error: {e}')
+    return False
+
+
 def _norm_codec(s):
     return (s or '').lower()
 
@@ -585,8 +620,45 @@ def _download_one(track: dict, out_dir: Path, token: str,
                     downloaded += len(chunk)
                     progress_cb({'status': 'downloading',
                                  'downloaded_bytes': downloaded, 'total_bytes': total})
-    # Вшиваем теги и обложку из Я.Музыки. Если что-то пойдёт не так — лог,
-    # но скачивание всё равно успех.
+    # Определяем реальный контейнер по магическим байтам (codec из API ненадёжен:
+    # Яндекс зовёт flac-mp4 «flac», но это MP4, не нативный FLAC).
+    container = _detect_container(out_path)
+
+    # FLAC-в-MP4 → нативный .flac через ffmpeg (lossless copy). Так файл откроют
+    # FLAC-декодеры / спектрографы, и можно дописать VorbisComment + обложку.
+    wants_flac = (codec or '').lower() in ('flac', 'flac-mp4')
+    if container == 'm4a' and wants_flac:
+        try:
+            from ffmpeg_helper import find_ffmpeg
+            ffmpeg_path = find_ffmpeg()
+        except Exception:
+            ffmpeg_path = None
+        if ffmpeg_path:
+            flac_path = out_path.with_suffix('.flac')
+            if _remux_mp4_to_flac(out_path, flac_path, ffmpeg_path):
+                try: out_path.unlink()
+                except OSError: pass
+                out_path = flac_path
+                container = 'flac'
+                print('[YM] FLAC-in-MP4 → нативный .flac (ffmpeg copy)')
+            else:
+                print('[YM] ремукс не удался, оставляю MP4 как .m4a')
+        else:
+            print('[YM] ffmpeg не найден — FLAC останется в MP4-контейнере (.m4a). '
+                  'Для нативного .flac установите ffmpeg.')
+
+    # Чиним расширение под реальный контейнер
+    if container:
+        want = out_path.with_suffix('.' + container)
+        if want != out_path:
+            try:
+                if want.exists(): want.unlink()
+                out_path.rename(want)
+                out_path = want
+            except OSError as e:
+                print(f'[YM] rename failed: {e}')
+
+    # Вшиваем теги и обложку (mutagen сам детектит формат по магии).
     cover_uri = track.get('coverUri') or ''
     cover_bytes = _fetch_cover_bytes(cover_uri) if cover_uri else None
     _embed_metadata_and_cover(out_path, codec, track, cover_bytes)

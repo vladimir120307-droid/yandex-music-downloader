@@ -27,6 +27,8 @@ python build.py
 
 Программа сама находит ffmpeg в PATH или рядом с собой. Без ffmpeg будет работать только то, что отдаётся прямым mp3 (Bandcamp, частично Я.Музыка) — YouTube/SoundCloud/видео потребуют конвертации.
 
+> 🎵 **FLAC из Я.Музыки:** Яндекс отдаёт lossless внутри MP4-контейнера. С ffmpeg программа автоматически ремуксит его в **нативный `.flac`** (без потери качества — спектрограф и FLAC-тулзы открывают). Без ffmpeg файл сохранится как `.m4a` (тоже lossless, но не нативный FLAC).
+
 **Где взять:**
 - **Windows:** [yt-dlp/FFmpeg-Builds](https://github.com/yt-dlp/FFmpeg-Builds/releases) → `ffmpeg-master-latest-win64-gpl.zip` → распаковать → `ffmpeg.exe` рядом с `MusicDownloader.exe` (либо в PATH).
 - **macOS:** `brew install ffmpeg`
