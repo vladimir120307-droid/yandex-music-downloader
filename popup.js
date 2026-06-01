@@ -42,6 +42,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ═══ Lyrics toggle ═══
+  const lyricsToggle = document.getElementById('lyrics-toggle');
+  if (lyricsToggle) {
+    chrome.storage.local.get('yamLyrics', (data) => {
+      lyricsToggle.checked = !!(data && data.yamLyrics);  // default off
+    });
+    lyricsToggle.addEventListener('change', () => {
+      chrome.storage.local.set({ yamLyrics: lyricsToggle.checked });
+    });
+  }
+
   // ═══ Current track (Yandex only, via content script) ═══
   chrome.runtime.sendMessage({ action: 'getCurrentTrack' }, (resp) => {
     if (chrome.runtime.lastError) return;

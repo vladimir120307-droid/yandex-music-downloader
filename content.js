@@ -136,6 +136,7 @@
         artist: (track && track.artist) || '',
         album: (track && track.album) || '',
         year: (track && track.year) || '',
+        lyrics: (track && track.lyrics) || '',
         flacNative,
         saveAs: false,
       }, (resp) => {
@@ -165,7 +166,7 @@
         return { success: false, error: 'Нет URL. Переключите трек.' };
       }
       // Дозаполняем coverUri/album/year для тэгов
-      try { await yandex.enrichTrack(track); } catch {}
+      try { const wantLyrics = await new Promise(r => { try { chrome.storage.local.get("yamLyrics", d => r(!!(d && d.yamLyrics))); } catch { r(false); } }); await yandex.enrichTrack(track, { wantLyrics }); } catch {}
       const fn = yandex.getFilename(track) || `track_${info.trackId}.mp3`;
       const dl = await dispatchDownload(result, fn, track);
       if (!dl.success) {
@@ -187,7 +188,7 @@
       const track = { trackId, albumId, title: titleInfo?.title || '', artist: titleInfo?.artist || '', origin: ORIGIN };
       const result = await yandex.getAudioUrl(track, {});
       if (result) {
-        try { await yandex.enrichTrack(track); } catch {}
+        try { const wantLyrics = await new Promise(r => { try { chrome.storage.local.get("yamLyrics", d => r(!!(d && d.yamLyrics))); } catch { r(false); } }); await yandex.enrichTrack(track, { wantLyrics }); } catch {}
         const fn = yandex.getFilename(track) || `track_${trackId}.mp3`;
         const dl = await dispatchDownload(result, fn, track);
         if (!dl.success) {
