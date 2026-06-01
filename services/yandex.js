@@ -223,20 +223,33 @@
     return { trackId: String(trackId), albumId: albumId || '', title: '', artist: '' };
   }
 
-  // Дозаполнение track-метадата (cover/album/year) — для in-page кнопок где
+  // Текст песни (несинхронный) — /supplement отдаёт анонимно
+  async function fetchLyrics(trackId) {
+    try {
+      const data = await apiGet(`/tracks/${trackId}/supplement`, await getToken());
+      const lyr = data?.lyrics;
+      if (!lyr) return '';
+      return lyr.fullLyrics || lyr.lyrics || '';
+    } catch (e) { console.warn('[YMD] lyrics fetch failed:', e.message); return ''; }
+  }
+
+  // Дозаполнение track-метадата (cover/album/year/lyrics) — для in-page кнопок где
   // у нас только trackId/albumId/title/artist из DOM, без coverUri.
-  async function enrichTrack(track) {
-    if (track && track.coverUri && track.album) return track; // уже есть
+  async function enrichTrack(track, opts) {
     if (!track || !track.trackId) return track;
     try {
       const token = await getToken();
-      const enriched = await fetchSingleTrack(track.trackId, track.albumId, token);
-      // Сохраняем переданные title/artist если они уже есть (более точные из DOM)
-      track.coverUri = track.coverUri || enriched.coverUri || '';
-      track.album = track.album || enriched.album || '';
-      track.year = track.year || enriched.year || '';
-      track.title = track.title || enriched.title || '';
-      track.artist = track.artist || enriched.artist || '';
+      if (!track.coverUri || !track.album) {
+        const enriched = await fetchSingleTrack(track.trackId, track.albumId, token);
+        track.coverUri = track.coverUri || enriched.coverUri || '';
+        track.album = track.album || enriched.album || '';
+        track.year = track.year || enriched.year || '';
+        track.title = track.title || enriched.title || '';
+        track.artist = track.artist || enriched.artist || '';
+      }
+      if (opts?.wantLyrics && !track.lyrics) {
+        track.lyrics = await fetchLyrics(track.trackId);
+      }
     } catch (e) { console.warn('[YMD] enrichTrack failed:', e.message); }
     return track;
   }
@@ -371,6 +384,7 @@
     listTracks,
     getAudioUrl,
     enrichTrack,
+    fetchLyrics,
     getFilename(track) {
       const ext = extForCodec(track && track._codec);
       return globalThis.YMD.utils.makeFilename(track.artist, track.title, ext) ||

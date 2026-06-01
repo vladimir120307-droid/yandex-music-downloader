@@ -284,6 +284,18 @@ class MainWindow(QMainWindow):
         yam_qual_row.addStretch()
         layout.addLayout(yam_qual_row)
 
+        # Текст песни (Я.Музыка)
+        lyrics_row = QHBoxLayout()
+        self.lyrics_check = QCheckBox('Сохранять текст песни в файл (Я.Музыка)')
+        self.lyrics_check.setToolTip(
+            'Вшивает текст песни в метаданные трека (USLT для MP3, LYRICS для FLAC,\n'
+            '©lyr для M4A). Плееры (AIMP, foobar, PowerAmp) его показывают.'
+        )
+        self.lyrics_check.stateChanged.connect(self._save_settings)
+        lyrics_row.addWidget(self.lyrics_check)
+        lyrics_row.addStretch()
+        layout.addLayout(lyrics_row)
+
         sep = QFrame(); sep.setObjectName('sep'); sep.setFrameShape(QFrame.HLine)
         layout.addWidget(sep)
 
@@ -338,12 +350,14 @@ class MainWindow(QMainWindow):
             if self.yam_quality_combo.itemData(i) == saved_q:
                 self.yam_quality_combo.setCurrentIndex(i)
                 break
+        self.lyrics_check.setChecked(bool(self.settings.get('yam_lyrics', False)))
 
     def _save_settings(self):
         self.settings.set('output_dir', self.dir_edit.text())
         self.settings.set('mode', self.mode_combo.currentIndex())
         self.settings.set('cookies', self.cookies_combo.currentIndex())
         self.settings.set('yam_quality', self.yam_quality_combo.currentData() or 'auto')
+        self.settings.set('yam_lyrics', self.lyrics_check.isChecked())
 
     def _refresh_status(self):
         if self.ffmpeg_path:
@@ -510,6 +524,7 @@ class MainWindow(QMainWindow):
             'cookies_browser': cookies,
             'yam_token': self.settings.get('yam_token', '') or '',
             'yam_quality': self.yam_quality_combo.currentData() or 'auto',
+            'yam_lyrics': self.lyrics_check.isChecked(),
             **mode_opts,
         }
 

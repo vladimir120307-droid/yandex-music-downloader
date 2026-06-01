@@ -165,11 +165,11 @@ async function downloadAndTag(opts) {
   }
 
   // MP3 → ID3v2 APIC
-  if (realContainer === 'mp3' && (coverBytes || opts.title || opts.artist || opts.album)) {
+  if (realContainer === 'mp3' && (coverBytes || opts.title || opts.artist || opts.album || opts.lyrics)) {
     try {
       const tag = globalThis.YMD_ID3.buildID3v2({
         title: opts.title, artist: opts.artist, album: opts.album,
-        year: opts.year, cover: coverBytes, coverMime: 'image/jpeg',
+        year: opts.year, lyrics: opts.lyrics, cover: coverBytes, coverMime: 'image/jpeg',
       });
       bytes = globalThis.YMD_ID3.prependID3v2ToMP3(bytes, tag);
       debug.tagged = true;
@@ -183,7 +183,7 @@ async function downloadAndTag(opts) {
   if (realContainer === 'm4a') {
     const tagOpts = {
       title: opts.title, artist: opts.artist, album: opts.album, year: opts.year,
-      cover: coverBytes, coverMime: 'image/jpeg',
+      lyrics: opts.lyrics, cover: coverBytes, coverMime: 'image/jpeg',
     };
     let remuxed = false;
     if (opts.flacNative) {
@@ -202,7 +202,7 @@ async function downloadAndTag(opts) {
         console.warn('[YMD] flac remux skip (не FLAC или ошибка):', e.message);
       }
     }
-    if (!remuxed && (coverBytes || opts.title || opts.artist || opts.album)) {
+    if (!remuxed && (coverBytes || opts.title || opts.artist || opts.album || opts.lyrics)) {
       try {
         bytes = globalThis.YMD_MP4.addCoverToMp4(bytes, tagOpts);
         debug.tagged = true;
@@ -285,6 +285,7 @@ async function downloadByUrl(rawUrl) {
 
   const saveAs = await getSaveAs();
   const flacNative = await new Promise(r => chrome.storage.local.get('yamFlacNative', d => r(d?.yamFlacNative !== false)));
+  const wantLyrics = await new Promise(r => chrome.storage.local.get('yamLyrics', d => r(!!(d && d.yamLyrics))));
   const folder = service.name; // subfolder per service for batch downloads
   let downloaded = 0;
   const isBatch = tracks.length > 1;
@@ -294,6 +295,10 @@ async function downloadByUrl(rawUrl) {
     const labelTitle = (t.artist && t.title) ? `${t.artist} - ${t.title}` : (t.title || `track ${i + 1}`);
     pushProgress({ status: 'progress', current: i + 1, total: tracks.length, title: labelTitle });
     try {
+      // Текст песни (если включено и сервис Я.Музыка)
+      if (wantLyrics && service.name === 'yandex' && service.fetchLyrics && !t.lyrics) {
+        try { t.lyrics = await service.fetchLyrics(t.trackId); } catch {}
+      }
       const result = await service.getAudioUrl(t, {});
       if (!result) throw new Error('audio URL пустой');
       const filename = service.getFilename(t) || `track.mp3`;
@@ -317,6 +322,7 @@ async function downloadByUrl(rawUrl) {
           artist: t.artist || '',
           album: t.album || '',
           year: t.year || '',
+          lyrics: t.lyrics || '',
           flacNative,
           saveAs: saveAs && !isBatch,
         });
@@ -403,6 +409,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       artist: message.artist,
       album: message.album,
       year: message.year,
+      lyrics: message.lyrics,
       flacNative: !!message.flacNative,
       saveAs: !!message.saveAs,
     })

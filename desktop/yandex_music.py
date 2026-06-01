@@ -165,6 +165,19 @@ def _fetch_cover_bytes(uri: str, size: str = '600x600') -> Optional[bytes]:
         return None
 
 
+def _fetch_lyrics(track_id: str, token: Optional[str]) -> str:
+    """Текст песни (несинхронный) через /supplement — отдаётся анонимно."""
+    try:
+        data = _api_get(f'/tracks/{track_id}/supplement', token)
+        lyr = data.get('lyrics') if isinstance(data, dict) else None
+        if not lyr:
+            return ''
+        return lyr.get('fullLyrics') or lyr.get('lyrics') or ''
+    except Exception as e:
+        print(f'[YM] lyrics fetch failed: {e}')
+        return ''
+
+
 def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
                               cover_bytes: Optional[bytes]) -> None:
     """Прописать ID3 / VorbisComment / MP4-atoms с обложкой и тегами."""
@@ -179,6 +192,7 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
     artist = track.get('artist') or ''
     album = track.get('album') or ''
     year = str(track.get('year') or '') or None
+    lyrics = track.get('lyrics') or ''
 
     is_mp3 = head[:3] == b'ID3' or (len(head) > 1 and head[0] == 0xff and (head[1] & 0xe0) == 0xe0)
     is_flac = head[:4] == b'fLaC'
@@ -186,7 +200,7 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
 
     try:
         if is_mp3 or (codec == 'mp3' and not is_flac and not is_mp4):
-            from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, TDRC, ID3NoHeaderError
+            from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, TDRC, USLT, ID3NoHeaderError
             try:
                 audio = ID3(file_path)
             except ID3NoHeaderError:
@@ -198,6 +212,9 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
             if artist: audio.add(TPE1(encoding=1, text=artist))
             if album: audio.add(TALB(encoding=1, text=album))
             if year: audio.add(TDRC(encoding=1, text=year))
+            if lyrics:
+                audio.delall('USLT')
+                audio.add(USLT(encoding=1, lang='rus', desc='', text=lyrics))
             if cover_bytes:
                 audio.add(APIC(encoding=0, mime='image/jpeg', type=3, desc='', data=cover_bytes))
             # v2_version=3 — пишем строго ID3v2.3 (Win Explorer читает лучше 2.4)
@@ -209,6 +226,7 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
             if artist: audio['artist'] = artist
             if album: audio['album'] = album
             if year: audio['date'] = year
+            if lyrics: audio['lyrics'] = lyrics
             if cover_bytes:
                 pic = Picture()
                 pic.type = 3  # cover front
@@ -225,6 +243,7 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
             if artist: audio['\xa9ART'] = artist
             if album: audio['\xa9alb'] = album
             if year: audio['\xa9day'] = year
+            if lyrics: audio['\xa9lyr'] = lyrics
             if cover_bytes:
                 audio['covr'] = [MP4Cover(cover_bytes, imageformat=MP4Cover.FORMAT_JPEG)]
             audio.save()
@@ -488,7 +507,8 @@ def download(url: str,
              info_cb: Callable[[dict], None],
              progress_cb: Callable[[dict], None],
              cancel_check: Callable[[], bool],
-             quality: str = 'auto') -> str:
+             quality: str = 'auto',
+             want_lyrics: bool = False) -> str:
     if cancel_check():
         raise YMCancelled()
 
@@ -509,7 +529,7 @@ def download(url: str,
                 'Я.Музыка требует OAuth-токен для скачивания (download-info → 403). '
                 'Получите токен: ' + OAUTH_URL + ' и вставьте в поле «Я.Музыка токен».'
             )
-        return str(_download_one(track, Path(output_dir), token, progress_cb, cancel_check, quality))
+        return str(_download_one(track, Path(output_dir), token, progress_cb, cancel_check, quality, want_lyrics))
 
     # Album / playlist (batch)
     if parsed['type'] == 'album':
@@ -558,7 +578,7 @@ def download(url: str,
         progress_cb({'status': 'downloading', 'message': label,
                      'batch_current': i, 'batch_total': total})
         try:
-            p = _download_one(t, out_dir, token, progress_cb, cancel_check, quality)
+            p = _download_one(t, out_dir, token, progress_cb, cancel_check, quality, want_lyrics)
             last_path = str(p)
         except YMCancelled:
             raise
@@ -570,7 +590,7 @@ def download(url: str,
 
 def _download_one(track: dict, out_dir: Path, token: str,
                   progress_cb: Callable, cancel_check: Callable,
-                  quality: str = 'auto') -> Path:
+                  quality: str = 'auto', want_lyrics: bool = False) -> Path:
     if cancel_check():
         raise YMCancelled()
     result = _resolve_audio_url(track, token, quality)
@@ -659,6 +679,8 @@ def _download_one(track: dict, out_dir: Path, token: str,
                 print(f'[YM] rename failed: {e}')
 
     # Вшиваем теги и обложку (mutagen сам детектит формат по магии).
+    if want_lyrics and not track.get('lyrics'):
+        track['lyrics'] = _fetch_lyrics(track['trackId'], token)
     cover_uri = track.get('coverUri') or ''
     cover_bytes = _fetch_cover_bytes(cover_uri) if cover_uri else None
     _embed_metadata_and_cover(out_path, codec, track, cover_bytes)
