@@ -6,6 +6,7 @@ importScripts(
   'lib/core.js',
   'lib/id3.js',
   'lib/mp4cover.js',
+  'lib/flacremux.js',
   'services/yandex.js',
   'services/bandcamp.js',
   'services/soundcloud.js',
@@ -176,17 +177,38 @@ async function downloadAndTag(opts) {
     } catch (e) { debug.tagError = e.message; console.warn('[YMD] ID3 embed failed:', e.message); }
   }
 
-  // M4A/MP4 (включая FLAC-в-MP4) → covr atom. Фолбэк: при ошибке оставляем
-  // оригинальные байты (файл не бьётся, просто без обложки).
-  if (realContainer === 'm4a' && (coverBytes || opts.title || opts.artist || opts.album)) {
-    try {
-      bytes = globalThis.YMD_MP4.addCoverToMp4(bytes, {
-        title: opts.title, artist: opts.artist, album: opts.album, year: opts.year,
-        cover: coverBytes, coverMime: 'image/jpeg',
-      });
-      debug.tagged = true;
-      console.log('[YMD] MP4 covr embedded');
-    } catch (e) { debug.tagError = e.message; console.warn('[YMD] MP4 covr failed (файл сохранён без обложки):', e.message); }
+  // M4A контейнер. Если это FLAC-в-MP4 и юзер выбрал нативный .flac —
+  // ремуксим в браузере (без ffmpeg) с тегами+обложкой. Иначе оставляем .m4a
+  // и добавляем covr atom.
+  if (realContainer === 'm4a') {
+    const tagOpts = {
+      title: opts.title, artist: opts.artist, album: opts.album, year: opts.year,
+      cover: coverBytes, coverMime: 'image/jpeg',
+    };
+    let remuxed = false;
+    if (opts.flacNative) {
+      try {
+        // remux бросит если внутри не FLAC (например AAC) — тогда фолбэк на m4a
+        bytes = globalThis.YMD_FLACREMUX.remux(bytes, tagOpts);
+        realContainer = 'flac';
+        opts.filename = (opts.filename || 'track').replace(/\.[^.\/]+$/, '') + '.flac';
+        debug.filename = opts.filename;
+        debug.tagged = true;
+        debug.remuxed = true;
+        remuxed = true;
+        console.log('[YMD] FLAC-в-MP4 → нативный .flac (JS remux) + теги/обложка');
+      } catch (e) {
+        debug.remuxError = e.message;
+        console.warn('[YMD] flac remux skip (не FLAC или ошибка):', e.message);
+      }
+    }
+    if (!remuxed && (coverBytes || opts.title || opts.artist || opts.album)) {
+      try {
+        bytes = globalThis.YMD_MP4.addCoverToMp4(bytes, tagOpts);
+        debug.tagged = true;
+        console.log('[YMD] MP4 covr embedded');
+      } catch (e) { debug.tagError = e.message; console.warn('[YMD] MP4 covr failed (сохранён без обложки):', e.message); }
+    }
   }
 
   // base64 → data URL → chrome.downloads
@@ -262,6 +284,7 @@ async function downloadByUrl(rawUrl) {
   }
 
   const saveAs = await getSaveAs();
+  const flacNative = await new Promise(r => chrome.storage.local.get('yamFlacNative', d => r(d?.yamFlacNative !== false)));
   const folder = service.name; // subfolder per service for batch downloads
   let downloaded = 0;
   const isBatch = tracks.length > 1;
@@ -294,6 +317,7 @@ async function downloadByUrl(rawUrl) {
           artist: t.artist || '',
           album: t.album || '',
           year: t.year || '',
+          flacNative,
           saveAs: saveAs && !isBatch,
         });
         res = { success: dl.ok, error: dl.error };
@@ -379,6 +403,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       artist: message.artist,
       album: message.album,
       year: message.year,
+      flacNative: !!message.flacNative,
       saveAs: !!message.saveAs,
     })
       .then(res => sendResponse(res))

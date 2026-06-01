@@ -30,6 +30,18 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.set({ yamQuality: qualitySelect.value });
   });
 
+  // ═══ FLAC native (.flac) toggle ═══
+  const flacNativeToggle = document.getElementById('flac-native-toggle');
+  if (flacNativeToggle) {
+    chrome.storage.local.get('yamFlacNative', (data) => {
+      // default true (нативный .flac)
+      flacNativeToggle.checked = (data && data.yamFlacNative !== false);
+    });
+    flacNativeToggle.addEventListener('change', () => {
+      chrome.storage.local.set({ yamFlacNative: flacNativeToggle.checked });
+    });
+  }
+
   // ═══ Current track (Yandex only, via content script) ═══
   chrome.runtime.sendMessage({ action: 'getCurrentTrack' }, (resp) => {
     if (chrome.runtime.lastError) return;
