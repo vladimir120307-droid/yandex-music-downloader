@@ -60,14 +60,26 @@
         <option value="mp3-320">MP3 320 kbps</option>
       </select>
     </div>
+
+    <div class="setting-row quality-row" id="flac-format-row">
+      <label class="toggle-label" for="flac-native-toggle">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        FLAC → нативный <code>.flac</code>
+      </label>
+      <input type="checkbox" id="flac-native-toggle" class="toggle-check" checked>
+    </div>
+
     <details class="quality-help">
       <summary>что выбрать?</summary>
       <div class="quality-help-body">
         <p><b>Авто</b> — FLAC если Плюс + у трека есть lossless, иначе MP3 320. Рекомендую.</p>
-        <p><b>FLAC</b> — lossless (CD-качество 16/44.1). Яндекс отдаёт FLAC внутри MP4, поэтому в расширении файл сохраняется как <code>.m4a</code> — это тот же lossless, играется везде, с обложкой и тегами.</p>
+        <p><b>FLAC</b> — lossless (CD-качество 16/44.1) с обложкой и тегами.</p>
         <p><b>MP3 320</b> — ~10 МБ. Работает у всех (даже без Плюса).</p>
-        <p style="margin-top:8px; color: rgba(255,180,77,0.85)">
-          💡 Нужен именно <b>нативный .flac</b> (для спектрографа / FLAC-тулзов)? <b>Десктопная программа</b> ремуксит FLAC-в-MP4 в настоящий .flac через ffmpeg — без потери качества (аудио бит-в-бит то же самое).
+        <p style="margin-top:8px;">
+          <b>FLAC → нативный .flac</b> (галка вкл): расширение переупаковывает FLAC-в-MP4 в настоящий <code>.flac</code> прямо в браузере — без потери качества (аудио бит-в-бит то же). Открывается в спектрографах и FLAC-тулзах.
+        </p>
+        <p style="color: rgba(255,255,255,0.4)">
+          Галка выкл → сохраняется как <code>.m4a</code> (тот же lossless, чуть быстрее, играется везде).
         </p>
       </div>
     </details>

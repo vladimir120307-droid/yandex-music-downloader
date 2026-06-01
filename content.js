@@ -121,6 +121,11 @@
     const key = (typeof result === 'object') ? result.key : null;
     if (!url) return { success: false, error: 'нет URL' };
 
+    const flacNative = await new Promise(r => {
+      try { chrome.storage.local.get('yamFlacNative', d => r(d?.yamFlacNative !== false)); }
+      catch { r(true); }
+    });
+
     return new Promise((resolve) => {
       chrome.runtime.sendMessage({
         action: 'downloadAndTag',
@@ -131,6 +136,7 @@
         artist: (track && track.artist) || '',
         album: (track && track.album) || '',
         year: (track && track.year) || '',
+        flacNative,
         saveAs: false,
       }, (resp) => {
         if (resp?.debug) {

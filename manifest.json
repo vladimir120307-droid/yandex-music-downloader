@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Music Downloader (Я.Музыка / Bandcamp / SoundCloud)",
-  "version": "3.6.1",
+  "version": "3.7.0",
   "description": "Скачивайте треки, альбомы и плейлисты с Яндекс Музыки, Bandcamp и SoundCloud — на странице или по ссылке из попапа.",
   "permissions": [
     "activeTab",
@@ -62,6 +62,7 @@
         "lib/core.js",
         "lib/id3.js",
         "lib/mp4cover.js",
+        "lib/flacremux.js",
         "services/yandex.js",
         "content.js"
       ],
