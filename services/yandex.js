@@ -52,9 +52,12 @@
 
   function extForCodec(codec) {
     switch ((codec || '').toLowerCase()) {
-      case 'flac': return 'flac';
+      case 'flac':
+      case 'flac-mp4': return 'flac';
       case 'aac':
-      case 'he-aac': return 'aac';
+      case 'he-aac':
+      case 'aac-mp4':
+      case 'he-aac-mp4': return 'm4a';  // AAC-в-MP4 → .m4a (правильное расширение)
       case 'opus': return 'opus';
       case 'mp3':
       default: return 'mp3';
@@ -254,30 +257,13 @@
     const token = await getToken();
 
     if (token) {
-      // V2 (/get-file-info, encraw) — единственный путь для FLAC. Поток зашифрован
-      // AES-CTR, ключ приходит в ответе → расшифровываем перед сохранением.
+      // V2 (/get-file-info, encraw) — путь ТОЛЬКО для FLAC. Принимаем результат
+      // ИСКЛЮЧИТЕЛЬНО если это FLAC. Если V2 вернул aac/aac-mp4/mp3 — это НЕ то
+      // что обещает "Авто" (FLAC → иначе MP3 320). Откатываемся на V1 за чистым MP3.
       if (quality === 'flac' || quality === 'auto' || !quality) {
+        let v2 = null;
         try {
-          const v2 = await getFileInfoV2(track.trackId, token);
-          const v2url = v2?.urls?.[0];
-          const v2codec = normCodec(v2?.codec);
-          const v2key = v2?.key;
-          if (v2url && v2codec && v2key) {
-            const isFlacResult = v2codec === 'flac' || v2codec === 'flac-mp4';
-            if (quality !== 'flac' || isFlacResult) {
-              track._codec = isFlacResult ? 'flac' : v2codec;
-              track._bitrate = v2.bitrate;
-              console.log('[YMD] V2:', v2codec, v2.bitrate, 'kbps · encrypted (AES-CTR)');
-              return {
-                url: v2url,
-                key: v2key,
-                codec: track._codec,
-                bitrate: v2.bitrate,
-                encrypted: true,
-              };
-            }
-            console.log('[YMD] V2 returned non-FLAC (' + v2codec + '), falling back to V1');
-          }
+          v2 = await getFileInfoV2(track.trackId, token);
         } catch (err) {
           console.warn('[YMD] V2 failed:', err.message);
           if (quality === 'flac') {
@@ -288,10 +274,32 @@
                 : 'FLAC недоступен: ' + err.message
             );
           }
+          // quality='auto' → проглатываем, идём в V1 за MP3
+        }
+        if (v2) {
+          const v2url = v2.urls?.[0];
+          const v2codec = normCodec(v2.codec);
+          const v2key = v2.key;
+          const isFlacResult = v2codec === 'flac' || v2codec === 'flac-mp4';
+          if (v2url && v2key && isFlacResult) {
+            track._codec = 'flac';
+            track._bitrate = v2.bitrate;
+            console.log('[YMD] V2 FLAC:', v2codec, v2.bitrate, 'kbps · encrypted');
+            return { url: v2url, key: v2key, codec: 'flac', bitrate: v2.bitrate, encrypted: true };
+          }
+          // V2 не дал FLAC (вернул aac/mp3/etc)
+          if (quality === 'flac') {
+            throw new Error(
+              'FLAC недоступен для этого трека — нет lossless-мастера' +
+              (v2codec ? ' (API отдаёт только ' + v2codec + ')' : '') +
+              '. Выбери «MP3 320» или «Авто».'
+            );
+          }
+          console.log('[YMD] V2 без FLAC (' + v2codec + '), беру MP3 320 через V1');
         }
       }
 
-      // V1 path — /tracks/X/download-info (для MP3 и как fallback)
+      // V1 path — /tracks/X/download-info (чистый MP3, без MP4-контейнера)
       const dlInfo = await apiGet(`/tracks/${track.trackId}/download-info`, token);
       if (!Array.isArray(dlInfo) || !dlInfo.length) throw new Error('Я.Музыка не вернула download-info');
 
