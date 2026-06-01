@@ -5,6 +5,7 @@ importScripts(
   'lib/md5.js',
   'lib/core.js',
   'lib/id3.js',
+  'lib/mp4cover.js',
   'services/yandex.js',
   'services/bandcamp.js',
   'services/soundcloud.js',
@@ -148,37 +149,44 @@ async function downloadAndTag(opts) {
     debug.filename = opts.filename;
   }
 
-  // Embed ID3v2 + cover — только для нативного MP3.
-  // FLAC (нативный) и M4A (MP4) — теги пишет десктоп через mutagen; в расширении
-  // сохраняем как есть с корректным расширением (файл валиден и играется).
-  if (realContainer === 'mp3') {
-    let coverBytes = null;
-    if (opts.coverUri) {
-      try {
-        const coverUrl = coverUriToHttps(opts.coverUri, '600x600');
-        console.log('[YMD] fetching cover:', coverUrl);
-        const cr = await fetch(coverUrl, { credentials: 'omit' });
-        if (cr.ok) {
-          coverBytes = new Uint8Array(await cr.arrayBuffer());
-          debug.coverBytes = coverBytes.length;
-          console.log('[YMD] cover fetched:', coverBytes.length, 'bytes');
-        } else {
-          debug.coverError = 'HTTP ' + cr.status;
-          console.warn('[YMD] cover fetch HTTP', cr.status);
-        }
-      } catch (e) { debug.coverError = e.message; console.warn('[YMD] cover fetch failed:', e.message); }
-    }
-    if (coverBytes || opts.title || opts.artist || opts.album) {
-      try {
-        const tag = globalThis.YMD_ID3.buildID3v2({
-          title: opts.title, artist: opts.artist, album: opts.album,
-          year: opts.year, cover: coverBytes, coverMime: 'image/jpeg',
-        });
-        bytes = globalThis.YMD_ID3.prependID3v2ToMP3(bytes, tag);
-        debug.tagged = true;
-        console.log('[YMD] ID3 embedded, tag', tag.length, 'bytes, total', bytes.length);
-      } catch (e) { debug.tagError = e.message; console.warn('[YMD] ID3 embed failed:', e.message); }
-    }
+  // Скачиваем обложку (для всех контейнеров)
+  let coverBytes = null;
+  if (opts.coverUri && (realContainer === 'mp3' || realContainer === 'm4a')) {
+    try {
+      const coverUrl = coverUriToHttps(opts.coverUri, '600x600');
+      const cr = await fetch(coverUrl, { credentials: 'omit' });
+      if (cr.ok) {
+        coverBytes = new Uint8Array(await cr.arrayBuffer());
+        debug.coverBytes = coverBytes.length;
+        console.log('[YMD] cover fetched:', coverBytes.length, 'bytes');
+      } else { debug.coverError = 'HTTP ' + cr.status; }
+    } catch (e) { debug.coverError = e.message; console.warn('[YMD] cover fetch failed:', e.message); }
+  }
+
+  // MP3 → ID3v2 APIC
+  if (realContainer === 'mp3' && (coverBytes || opts.title || opts.artist || opts.album)) {
+    try {
+      const tag = globalThis.YMD_ID3.buildID3v2({
+        title: opts.title, artist: opts.artist, album: opts.album,
+        year: opts.year, cover: coverBytes, coverMime: 'image/jpeg',
+      });
+      bytes = globalThis.YMD_ID3.prependID3v2ToMP3(bytes, tag);
+      debug.tagged = true;
+      console.log('[YMD] ID3 embedded');
+    } catch (e) { debug.tagError = e.message; console.warn('[YMD] ID3 embed failed:', e.message); }
+  }
+
+  // M4A/MP4 (включая FLAC-в-MP4) → covr atom. Фолбэк: при ошибке оставляем
+  // оригинальные байты (файл не бьётся, просто без обложки).
+  if (realContainer === 'm4a' && (coverBytes || opts.title || opts.artist || opts.album)) {
+    try {
+      bytes = globalThis.YMD_MP4.addCoverToMp4(bytes, {
+        title: opts.title, artist: opts.artist, album: opts.album, year: opts.year,
+        cover: coverBytes, coverMime: 'image/jpeg',
+      });
+      debug.tagged = true;
+      console.log('[YMD] MP4 covr embedded');
+    } catch (e) { debug.tagError = e.message; console.warn('[YMD] MP4 covr failed (файл сохранён без обложки):', e.message); }
   }
 
   // base64 → data URL → chrome.downloads
