@@ -135,10 +135,23 @@ async function downloadAndTag(opts) {
     bytes = new Uint8Array(decryptedBuf);
   }
 
-  // Embed ID3v2 + cover — пока только для MP3.
-  // FLAC/FLAC-MP4 — TODO (нужны METADATA_BLOCK_PICTURE / MP4 covr atom).
-  const debug = { codec: opts.codec || '', coverUri: opts.coverUri || '', coverBytes: 0, tagged: false };
-  if ((opts.codec || '').toLowerCase() === 'mp3') {
+  // Определяем РЕАЛЬНЫЙ контейнер по магическим байтам — поле codec из API
+  // ненадёжно (Яндекс зовёт flac-mp4 «flac», но это MP4-контейнер, не нативный
+  // FLAC). Сохранять MP4 как .flac → FLAC-декодеры выдают LOST_SYNC / "Not a flac".
+  const realContainer = detectContainer(bytes);  // 'flac' | 'm4a' | 'mp3' | 'unknown'
+  const debug = { codec: opts.codec || '', container: realContainer, coverUri: opts.coverUri || '', coverBytes: 0, tagged: false };
+
+  // Чиним расширение файла под реальный контейнер
+  if (realContainer !== 'unknown') {
+    const wantExt = realContainer;  // flac/m4a/mp3
+    opts.filename = (opts.filename || 'track').replace(/\.[^.\/]+$/, '') + '.' + wantExt;
+    debug.filename = opts.filename;
+  }
+
+  // Embed ID3v2 + cover — только для нативного MP3.
+  // FLAC (нативный) и M4A (MP4) — теги пишет десктоп через mutagen; в расширении
+  // сохраняем как есть с корректным расширением (файл валиден и играется).
+  if (realContainer === 'mp3') {
     let coverBytes = null;
     if (opts.coverUri) {
       try {
@@ -183,6 +196,20 @@ async function downloadAndTag(opts) {
       else resolve({ ok: true, downloadId: id, size: bytes.length, debug });
     });
   });
+}
+
+// Определение реального аудио-контейнера по магическим байтам.
+function detectContainer(bytes) {
+  if (!bytes || bytes.length < 12) return 'unknown';
+  // fLaC — нативный FLAC
+  if (bytes[0] === 0x66 && bytes[1] === 0x4c && bytes[2] === 0x61 && bytes[3] === 0x43) return 'flac';
+  // ....ftyp — MP4/M4A контейнер (offset 4)
+  if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) return 'm4a';
+  // ID3 tag — mp3
+  if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) return 'mp3';
+  // MPEG audio frame sync (0xFFEx/0xFFFx) — mp3 без ID3
+  if (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) return 'mp3';
+  return 'unknown';
 }
 
 function coverUriToHttps(uri, size = '600x600') {
