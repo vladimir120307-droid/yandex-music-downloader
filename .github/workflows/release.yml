@@ -35,6 +35,7 @@ jobs:
             background.js \
             content.js content.css \
             popup.html popup.js popup.css \
+            offscreen.html offscreen.js \
             lib services inject icons \
             README.md
           echo "out=out/${OUT}" >> "$GITHUB_OUTPUT"

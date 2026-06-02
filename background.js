@@ -140,7 +140,7 @@ async function downloadAndTag(opts) {
   // Определяем РЕАЛЬНЫЙ контейнер по магическим байтам — поле codec из API
   // ненадёжно (Яндекс зовёт flac-mp4 «flac», но это MP4-контейнер, не нативный
   // FLAC). Сохранять MP4 как .flac → FLAC-декодеры выдают LOST_SYNC / "Not a flac".
-  const realContainer = detectContainer(bytes);  // 'flac' | 'm4a' | 'mp3' | 'unknown'
+  let realContainer = detectContainer(bytes);  // 'flac' | 'm4a' | 'mp3' | 'unknown'
   const debug = { codec: opts.codec || '', container: realContainer, coverUri: opts.coverUri || '', coverBytes: 0, tagged: false };
 
   // Чиним расширение файла под реальный контейнер
@@ -211,21 +211,86 @@ async function downloadAndTag(opts) {
     }
   }
 
-  // base64 → data URL → chrome.downloads
-  const chunkSize = 0x8000;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-  }
-  const base64 = btoa(binary);
-  const dataUrl = `data:application/octet-stream;base64,${base64}`;
-
-  return new Promise(resolve => {
-    chrome.downloads.download({ url: dataUrl, filename: opts.filename, saveAs: !!opts.saveAs }, (id) => {
-      if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message, debug });
-      else resolve({ ok: true, downloadId: id, size: bytes.length, debug });
+  // Сохранение через blob: URL (offscreen document). Для маленьких файлов
+  // (<5 МБ) фоллбэк на data: URL если offscreen почему-то недоступен.
+  const blobId = 'ymd-' + (++blobCounter);
+  try {
+    const url = await makeBlobUrlViaOffscreen(blobId, bytes, 'application/octet-stream');
+    const id = await new Promise((resolve, reject) => {
+      chrome.downloads.download({ url, filename: opts.filename, saveAs: !!opts.saveAs }, (downloadId) => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(downloadId);
+      });
     });
+    // Revoke после завершения скачивания (или по таймеру как страховка)
+    revokeBlobUrlLater(blobId, id);
+    debug.via = 'offscreen-blob';
+    return { ok: true, downloadId: id, size: bytes.length, debug };
+  } catch (e) {
+    console.warn('[YMD] offscreen blob failed, fallback to data URL:', e.message);
+    // Фоллбэк: data URL (работает для небольших файлов)
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    const dataUrl = `data:application/octet-stream;base64,${btoa(binary)}`;
+    return new Promise(resolve => {
+      chrome.downloads.download({ url: dataUrl, filename: opts.filename, saveAs: !!opts.saveAs }, (id) => {
+        if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message, debug });
+        else { debug.via = 'data-url'; resolve({ ok: true, downloadId: id, size: bytes.length, debug }); }
+      });
+    });
+  }
+}
+
+// ─────────────────────── OFFSCREEN BLOB HELPER ───────────────────────
+let blobCounter = 0;
+
+async function ensureOffscreen() {
+  // hasDocument есть не во всех версиях — пробуем, иначе ловим "already exists"
+  try {
+    if (chrome.offscreen.hasDocument) {
+      const has = await chrome.offscreen.hasDocument();
+      if (has) return;
+    }
+  } catch {}
+  try {
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['BLOBS'],
+      justification: 'Создание blob: URL для сохранения больших аудио-файлов (FLAC).',
+    });
+  } catch (e) {
+    // "Only a single offscreen document may be created" — значит уже есть, ок.
+    if (!/single offscreen|already/i.test(e.message || '')) throw e;
+  }
+}
+
+async function makeBlobUrlViaOffscreen(id, bytes, mime) {
+  if (!chrome.offscreen) throw new Error('offscreen API недоступен');
+  await ensureOffscreen();
+  const resp = await chrome.runtime.sendMessage({
+    target: 'offscreen', action: 'makeBlobUrl', id, bytes, mime,
   });
+  if (!resp || !resp.ok) throw new Error(resp?.error || 'makeBlobUrl failed');
+  return resp.url;
+}
+
+function revokeBlobUrlLater(id, downloadId) {
+  // Revoke когда скачивание завершилось
+  const onChanged = (delta) => {
+    if (delta.id === downloadId && delta.state &&
+        (delta.state.current === 'complete' || delta.state.current === 'interrupted')) {
+      chrome.downloads.onChanged.removeListener(onChanged);
+      chrome.runtime.sendMessage({ target: 'offscreen', action: 'revokeBlobUrl', id }).catch(() => {});
+    }
+  };
+  chrome.downloads.onChanged.addListener(onChanged);
+  // Страховка: revoke через 5 минут в любом случае
+  setTimeout(() => {
+    chrome.runtime.sendMessage({ target: 'offscreen', action: 'revokeBlobUrl', id }).catch(() => {});
+  }, 5 * 60 * 1000);
 }
 
 // Определение реального аудио-контейнера по магическим байтам.
