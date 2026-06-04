@@ -4,10 +4,10 @@
 
 **Скачивай музыку с Яндекс.Музыки и не только — в FLAC и MP3, с обложкой, тегами и текстом песни.**
 
-[![Release](https://img.shields.io/github/v/release/vladimir120307-droid/yandex-music-downloader?color=ffdb4d&label=версия&style=flat-square)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/vladimir120307-droid/yandex-music-downloader/total?style=flat-square&color=4caf50&label=скачано)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases)
-[![Stars](https://img.shields.io/github/stars/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=f0c000)](https://github.com/vladimir120307-droid/yandex-music-downloader/stargazers)
-[![License](https://img.shields.io/github/license/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=888)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/vladimir120307-droid/yandex-music-downloader?color=ffdb4d&label=release&style=flat-square)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/vladimir120307-droid/yandex-music-downloader/total?style=flat-square&color=4caf50&label=downloads)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases)
+[![Stars](https://img.shields.io/github/stars/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=f0c000&label=stars)](https://github.com/vladimir120307-droid/yandex-music-downloader/stargazers)
+[![License](https://img.shields.io/github/license/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=888&label=license)](LICENSE)
 
 Бесплатно · Open source · Без рекламы · Русский интерфейс
 
