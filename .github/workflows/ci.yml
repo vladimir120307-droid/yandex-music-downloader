@@ -35,5 +35,5 @@ jobs:
       - name: Compile-check Python files
         run: |
           python -m py_compile downloader.py
-          cd desktop
-          python -m py_compile main.py window.py core.py settings.py ffmpeg_helper.py build.py
+          python -m py_compile desktop/main.py desktop/window.py desktop/core.py desktop/settings.py desktop/ffmpeg_helper.py desktop/build.py desktop/yandex_music.py desktop/ffmpeg_installer.py
+          python -m py_compile lite/main.py lite/yandex_music.py lite/ffmpeg_helper.py lite/build.py

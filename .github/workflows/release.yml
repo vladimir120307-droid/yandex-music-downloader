@@ -81,9 +81,45 @@ jobs:
           name: desktop-windows
           path: desktop/dist/MusicDownloader-*.exe
 
+  lite:
+    name: Build Lite .exe (Windows 7)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Python 3.8 — последний с поддержкой Windows 7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
+      - name: Install dependencies
+        working-directory: lite
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+
+      - name: Build .exe
+        working-directory: lite
+        run: python build.py
+
+      - name: Rename binary
+        working-directory: lite/dist
+        shell: pwsh
+        run: |
+          $tag = "${env:GITHUB_REF_NAME}"
+          if (-not $tag) { $tag = "${{ inputs.tag }}" }
+          if (-not $tag) { $tag = "dev" }
+          Rename-Item -Path "MusicDownloader-Lite.exe" -NewName "MusicDownloader-Lite-$tag.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lite-windows
+          path: lite/dist/MusicDownloader-Lite-*.exe
+
   release:
     name: Publish release
-    needs: [extension, desktop]
+    needs: [extension, desktop, lite]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -104,15 +140,13 @@ jobs:
           files: |
             artifacts/extension-zip/*.zip
             artifacts/desktop-windows/*.exe
+            artifacts/lite-windows/*.exe
           body: |
             ## Что внутри
 
-            - **`music-downloader-extension-*.zip`** — расширение для Chromium-браузеров (Edge / Chrome / Яндекс.Браузер).
-              1. Распакуй
-              2. Открой `chrome://extensions` или `edge://extensions`
-              3. Включи "Режим разработчика"
-              4. "Загрузить распакованное" → выбери папку
-            - **`MusicDownloader-*.exe`** — десктопная программа для Windows. Просто запусти. Для конвертации в mp3 нужен `ffmpeg.exe` рядом ([взять тут](https://github.com/yt-dlp/FFmpeg-Builds/releases)).
+            - **`music-downloader-extension-*.zip`** — расширение для Chromium-браузеров (Edge / Chrome / Яндекс.Браузер). Распакуй → `chrome://extensions` → «Режим разработчика» → «Загрузить распакованное» → выбери папку.
+            - **`MusicDownloader-*.exe`** — десктоп для Windows 10/11. 1800+ сайтов (YouTube, SoundCloud, VK…). Просто запусти. Для конвертации нужен `ffmpeg.exe` рядом ([взять тут](https://github.com/yt-dlp/FFmpeg-Builds/releases)).
+            - **`MusicDownloader-Lite-*.exe`** — облегчённая версия для **Windows 7**. Только Яндекс.Музыка (FLAC / MP3 + обложка + теги + текст).
 
             ---
 

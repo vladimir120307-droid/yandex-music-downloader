@@ -11,7 +11,6 @@
   const yandex = globalThis.YMD?.registry?.get('yandex');
   if (!yandex) { console.error('[YMD] Yandex adapter not loaded'); return; }
 
-  const sanitize = globalThis.YMD.utils.sanitize;
   const sleep = globalThis.YMD.utils.sleep;
 
   // ═══════════════════════════════════════
@@ -230,7 +229,8 @@
     for (let i = 0; i < tracks.length; i++) {
       const t = tracks[i];
       showNotification(`${i + 1}/${tracks.length}: ${t.artist} - ${t.title}`, 'loading');
-      try { await downloadTrackById(t.trackId, t.albumId, t, { batch: true }); downloaded++; } catch { /* skip */ }
+      // downloadTrackById не бросает — возвращает {success}. Считаем только успешные.
+      try { const r = await downloadTrackById(t.trackId, t.albumId, t, { batch: true }); if (r && r.success) downloaded++; } catch { /* skip */ }
       await sleep(800);
     }
     showNotification(`✓ Скачано ${downloaded}/${tracks.length}`, 'success');
@@ -393,8 +393,17 @@
 
   function start() {
     injectTrackButtons(); injectPageButton();
-    new MutationObserver(() => { injectTrackButtons(); injectPageButton(); })
-      .observe(document.body, { childList: true, subtree: true });
+    // Дебаунс — Я.Музыка это тяжёлая SPA, DOM меняется тысячи раз. Без дебаунса
+    // injectPageButton дёргает querySelector по длинному списку на каждую мутацию.
+    let debounceTimer = null;
+    const scheduled = () => {
+      if (debounceTimer) return;
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        injectTrackButtons(); injectPageButton();
+      }, 300);
+    };
+    new MutationObserver(scheduled).observe(document.body, { childList: true, subtree: true });
     let lastUrl = location.href;
     setInterval(() => {
       if (location.href !== lastUrl) {

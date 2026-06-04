@@ -116,8 +116,19 @@ function getSaveAs() {
 //   coverUri  — опц., 'avatars.yandex.net/.../%%' — заберём cover отсюда
 //   title/artist/album/year — для ID3 тэгов
 //   saveAs    — bool
+// fetch с таймаутом — иначе зависший хост держит кнопку в loading навсегда
+async function fetchWithTimeout(url, opts, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms || 90000);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function downloadAndTag(opts) {
-  const r = await fetch(opts.url, { credentials: 'omit' });
+  const r = await fetchWithTimeout(opts.url, { credentials: 'omit' }, 120000);
   if (!r.ok) throw new Error(`fetch audio ${r.status}`);
   let bytes = new Uint8Array(await r.arrayBuffer());
 
@@ -155,7 +166,7 @@ async function downloadAndTag(opts) {
   if (opts.coverUri && (realContainer === 'mp3' || realContainer === 'm4a')) {
     try {
       const coverUrl = coverUriToHttps(opts.coverUri, '600x600');
-      const cr = await fetch(coverUrl, { credentials: 'omit' });
+      const cr = await fetchWithTimeout(coverUrl, { credentials: 'omit' }, 30000);
       if (cr.ok) {
         coverBytes = new Uint8Array(await cr.arrayBuffer());
         debug.coverBytes = coverBytes.length;
@@ -280,19 +291,21 @@ async function makeBlobUrlViaOffscreen(id, bytes, mime) {
 }
 
 function revokeBlobUrlLater(id, downloadId) {
-  // Revoke когда скачивание завершилось
+  let done = false;
+  const cleanup = () => {
+    if (done) return; done = true;
+    chrome.downloads.onChanged.removeListener(onChanged);
+    chrome.runtime.sendMessage({ target: 'offscreen', action: 'revokeBlobUrl', id }).catch(() => {});
+  };
   const onChanged = (delta) => {
     if (delta.id === downloadId && delta.state &&
         (delta.state.current === 'complete' || delta.state.current === 'interrupted')) {
-      chrome.downloads.onChanged.removeListener(onChanged);
-      chrome.runtime.sendMessage({ target: 'offscreen', action: 'revokeBlobUrl', id }).catch(() => {});
+      cleanup();
     }
   };
   chrome.downloads.onChanged.addListener(onChanged);
-  // Страховка: revoke через 5 минут в любом случае
-  setTimeout(() => {
-    chrome.runtime.sendMessage({ target: 'offscreen', action: 'revokeBlobUrl', id }).catch(() => {});
-  }, 5 * 60 * 1000);
+  // Страховка: revoke + снять listener через 5 минут в любом случае
+  setTimeout(cleanup, 5 * 60 * 1000);
 }
 
 // Определение реального аудио-контейнера по магическим байтам.
@@ -313,11 +326,6 @@ function coverUriToHttps(uri, size = '600x600') {
   if (!uri) return null;
   if (!uri.startsWith('http')) uri = 'https://' + uri;
   return uri.replace('%%', size);
-}
-
-// Backward-compat alias — старый код где-то ещё может звать decryptAndDownload
-async function decryptAndDownload(url, key, filename, saveAs) {
-  return await downloadAndTag({ url, key, filename, saveAs });
 }
 
 // ═══════════════════════════════════════

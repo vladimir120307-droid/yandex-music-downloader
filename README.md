@@ -1,181 +1,89 @@
+<div align="center">
+
 # 🎵 Music Downloader
 
-[![Release](https://img.shields.io/github/v/release/vladimir120307-droid/yandex-music-downloader?color=ffdb4d&label=latest&style=flat-square)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/vladimir120307-droid/yandex-music-downloader/total?style=flat-square&color=4caf50)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases)
+**Скачивай музыку с Яндекс.Музыки и не только — в FLAC и MP3, с обложкой, тегами и текстом песни.**
+
+[![Release](https://img.shields.io/github/v/release/vladimir120307-droid/yandex-music-downloader?color=ffdb4d&label=версия&style=flat-square)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/vladimir120307-droid/yandex-music-downloader/total?style=flat-square&color=4caf50&label=скачано)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases)
 [![Stars](https://img.shields.io/github/stars/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=f0c000)](https://github.com/vladimir120307-droid/yandex-music-downloader/stargazers)
 [![License](https://img.shields.io/github/license/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=888)](LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/vladimir120307-droid/yandex-music-downloader/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/vladimir120307-droid/yandex-music-downloader/actions)
 
-Универсальный загрузчик музыки и видео — **расширение для браузера** + **десктопная программа**, в одном репозитории.
+Бесплатно · Open source · Без рекламы · Русский интерфейс
 
-| | Что качает | Где работает |
-|---|---|---|
-| **Расширение** (Chromium) | Я.Музыка, Bandcamp, SoundCloud | прямо на странице или по ссылке из попапа |
-| **Desktop** (PySide6 + yt-dlp) | 1800+ сайтов: Я.Музыка, YouTube, SoundCloud, Bandcamp, VK, Twitch, Vimeo, RuTube, … | Windows / macOS / Linux |
+</div>
 
 ---
 
-## ⚡ Быстрый старт
+## Что это
 
-### Если ты просто хочешь качать (не разработчик)
+Две программы в одном репозитории:
 
-1. Зайди в [**Releases**](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest) на гитхабе
-2. Скачай **`MusicDownloader-vX.Y.Z.exe`** (для Windows) — это десктопная программа
-3. Запусти `MusicDownloader.exe`
-4. Вставь ссылку (на трек / альбом / плейлист / видео) и нажми **«Скачать»**
-5. Готово — файл лежит в папке `Downloads/MusicDownloader/`
+| | Что качает | Платформа |
+|---|---|---|
+| 🧩 **Расширение** (Chrome/Edge/Я.Браузер) | Яндекс.Музыка (FLAC + MP3), Bandcamp, SoundCloud | любая ОС с Chromium |
+| 🖥️ **Десктоп** (PySide6 + yt-dlp) | 1800+ сайтов: Я.Музыка, YouTube, SoundCloud, Bandcamp, VK, Twitch, Vimeo, RuTube… | Windows / macOS / Linux |
 
-**Когда нужны дополнительные действия:**
+**Большинству нужно расширение** — оно качает Я.Музыку прямо в браузере, без сторонних программ.
 
-- 🟡 **Для YouTube / SoundCloud / видео** → нажми кнопку **«Установить ffmpeg»** внизу окна. Программа скачает его сама (~80 МБ, один раз). Без ffmpeg работают только Я.Музыка и Bandcamp.
-- 🔴 **Для Я.Музыки обязательно:** (1) **залогинься в свой Яндекс-аккаунт** на [music.yandex.ru](https://music.yandex.ru); (2) получи OAuth-токен (один раз, авто или вручную). См. секцию [«Получение токена Я.Музыки»](#получение-токена-яндекс-музыки) ниже. Без аккаунта Яндекса скачивание не работает — Яндекс не отдаёт треки анонимам.
+## ✨ Возможности
 
-### Получение токена Яндекс Музыки
+- 🎧 **Lossless FLAC** из Яндекс.Музыки (нужен Я.Плюс) — настоящий нативный `.flac`, переупаковывается прямо в браузере без ffmpeg
+- 🎵 **MP3 320 kbps** — работает у всех, даже без подписки
+- 🖼️ **Обложка альбома** вшивается в файл (1000×1000)
+- 🏷️ **Полные теги** — название, артист, альбом, исполнитель альбома, год, жанр, номер трека и диска
+- 📝 **Текст песни** вшивается в трек (опционально)
+- 📁 **Альбомы и плейлисты** целиком — кнопкой на странице или по ссылке
+- 🔗 **Скачивание по ссылке** из попапа — вставил ссылку, получил файлы
+- 🟡 **Кнопка на каждом треке** + перетаскиваемая плавающая кнопка
 
-С мая 2026 Яндекс убрал старый веб-API и теперь скачивание возможно только через OAuth-токен. Сделать это нужно **один раз**, потом работает.
+---
 
-> ⚠️ **ОБЯЗАТЕЛЬНО:** для работы расширения и десктопа надо быть **залогиненным** на [music.yandex.ru](https://music.yandex.ru) (или авторизоваться через OAuth-ссылку ниже). Без аккаунта Яндекса скачивание не работает — Яндекс не отдаёт треки анонимным пользователям.
+## ⚡ Быстрый старт (расширение)
 
-**В расширении:**
-1. **Залогинься** на [music.yandex.ru](https://music.yandex.ru) (если ещё нет). Зайди в свой Яндекс-аккаунт.
-2. Открой любую страницу music.yandex.ru, нажми play на треке (или просто кликни по альбому) — **расширение поймает токен автоматически** из реального запроса страницы.
-3. Готово — кликаешь жёлтую кнопку скачивания на треках.
-
-Если автоматически не поймало (бывает редко):
-- Клик по иконке расширения → раздел «Токен Я.Музыки» → кнопка «Открыть страницу для получения токена» → разреши доступ → скопируй `access_token` из URL и вставь в поле.
-
-**В десктопе:**
-1. Открой программу
-2. Нажми кнопку **«Получить»** рядом с полем «Я.Музыка токен» (откроется страница OAuth в браузере)
-3. **Залогинься** в Яндекс (если ещё нет), нажми «Разрешить доступ»
-4. Тебя перебросит на адрес содержащий `#access_token=ВОТ_ЭТА_ДЛИННАЯ_СТРОКА&...`
-5. Скопируй **либо токен** (значение между `access_token=` и `&`), **либо весь URL целиком** (Ctrl+L → Ctrl+C прямо в адресной строке). Вставь в поле «Я.Музыка токен» → нажми **«Сохранить»**. Программа сама вытащит токен из URL.
-
-> 💡 **Если страница быстро редиректнула** и ты не успел скопировать — открой **историю браузера** (Ctrl+H), найди в ней URL содержащий `access_token` (он там сохранился), скопируй и вставь как описано выше.
-
-Прямая ссылка на OAuth: <https://oauth.yandex.ru/authorize?response_type=token&client_id=23cabbbdc6cd418abb4b39c32c41195d>
-
-### Качество скачивания Я.Музыки
-
-Сейчас доступно только **MP3 320 kbps** (~10 МБ/трек). Звучит как lossless на 99% аудиоустройств.
-
-> ⚠ **FLAC временно недоступен.** С 2026 года Яндекс ограничил lossless-стримы только для официальных мобильных приложений (требуется device attestation, которую браузер и десктоп-программа не могут дать). Все сторонние downloader'ы получают `403 not-allowed` на FLAC через любые API-эндпоинты. Если найдётся обходной путь — добавим обратно.
-
-**В расширении** при использовании OAuth-кнопки:
-- Расширение **само ловит токен из URL** в момент редиректа (через `chrome.tabs.onUpdated`) — даже если страница быстро перенаправляется. На иконке расширения появляется зелёная галка ✓.
-- Если по какой-то причине не поймало — открой попап расширения и вставь токен или полный URL (поле принимает оба варианта).
-
-### Если хочешь скачивать прямо в браузере
-
-1. Скачай **`music-downloader-extension-vX.Y.Z.zip`** из [Releases](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
-2. Распакуй архив куда-нибудь
+1. Скачай **`music-downloader-extension-vX.Y.Z.zip`** из [**Releases**](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
+2. Распакуй архив в любую папку
 3. Открой `chrome://extensions` (или `edge://extensions`)
-4. Включи **«Режим разработчика»** в правом верхнем углу
-5. Нажми **«Загрузить распакованное расширение»** и выбери папку с распакованным архивом
-6. **Залогинься в свой Яндекс-аккаунт** на [music.yandex.ru](https://music.yandex.ru). Без авторизации расширение работать НЕ будет — Яндекс не отдаёт треки анонимам.
-7. После логина зайди на [music.yandex.ru](https://music.yandex.ru), [bandcamp.com](https://bandcamp.com) или [soundcloud.com](https://soundcloud.com) — увидишь жёлтую кнопку скачивания
+4. Включи **«Режим разработчика»** (переключатель справа сверху)
+5. Нажми **«Загрузить распакованное расширение»** → выбери распакованную папку
+6. **Залогинься в свой Яндекс-аккаунт** на [music.yandex.ru](https://music.yandex.ru) — без этого Яндекс не отдаёт треки
+7. Открой любой трек/альбом — расширение **само поймает токен**, появится жёлтая кнопка скачивания
+
+> 💡 В попапе расширения (клик по иконке) можно выбрать качество (FLAC / MP3 320), включить текст песни и вставить ссылку для скачивания.
 
 ---
 
-## Поддерживаемые сервисы (v3.0)
+## 🔑 Токен Яндекс.Музыки
 
-| Сервис | На странице | По ссылке (paste-link) |
-|---|---|---|
-| **Яндекс Музыка** | ✅ кнопка на каждом треке + FAB + альбомы/плейлисты | ✅ |
-| **Bandcamp** | — | ✅ треки, альбомы, дискография |
-| **SoundCloud** | — | ✅ треки и плейлисты |
+С мая 2026 Яндекс убрал старый веб-API — теперь скачивание работает только через **OAuth-токен**. Настраивается **один раз**.
 
-> **DRM-сервисы** (Spotify, Apple Music, Tidal, Deezer) физически нельзя скачать из расширения — Widevine расшифровывает аудио в защищённом модуле браузера. Поддержка через **YouTube-matching** запланирована в v3.1+.
+**Автоматически (обычно так):** залогинься на [music.yandex.ru](https://music.yandex.ru) и открой любой трек — расширение перехватит токен из запроса страницы. Готово.
 
-## Возможности
+**Вручную (если авто не сработало):** клик по иконке расширения → раздел «Токен Я.Музыки» → **«Открыть страницу для получения токена»** → разреши доступ → скопируй `access_token` из адреса (или весь URL целиком) и вставь в поле.
 
-- **Выбор качества Я.Музыки** — FLAC (lossless, для Плюс-подписчиков), MP3 320/192, AAC 256/128, или Авто (берёт лучшее доступное)
-- **Перехват реального аудио-потока** на Я.Музыке (через `chrome.webRequest`) — полное качество, не превью
-- **Перетаскиваемая кнопка** скачивания (FAB) — позиция запоминается в localStorage
-- **Кнопки на каждом треке** в списках (Я.Музыка)
-- **Скачивание альбомов и плейлистов** — кнопка на странице альбома/плейлиста
-- **Paste-link в попапе** — вставь ссылку на трек/альбом/плейлист с любого поддерживаемого сервиса, авто-детект сервиса, прогресс-бар
-- **Выбор папки** — диалог "Сохранить как" опционально
-- **Поддержка доменов Я.Музыки** — `.ru`, `.kz`, `.by`, `.ua`, `.com`
+Прямая ссылка: [oauth.yandex.ru/authorize…](https://oauth.yandex.ru/authorize?response_type=token&client_id=23cabbbdc6cd418abb4b39c32c41195d)
 
-## Установка
+---
 
-### Готовые сборки (рекомендуется)
+## 🎚️ Качество и форматы
 
-[**📥 Скачать с Releases →**](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
+В попапе расширения (и в десктопе) выбирается качество для Яндекс.Музыки:
 
-- `music-downloader-extension-vX.Y.Z.zip` — расширение для браузера
-- `MusicDownloader-vX.Y.Z.exe` — десктопная программа для Windows
+| Опция | Что получишь |
+|---|---|
+| **Авто** (по умолчанию) | FLAC если у тебя Я.Плюс и у трека есть lossless, иначе MP3 320 |
+| **FLAC** | Lossless 16/44.1 (CD-качество), нужен Я.Плюс |
+| **MP3 320** | ~10 МБ/трек, работает у всех |
 
-### Расширение из исходников
+**Про FLAC:** Яндекс отдаёт lossless внутри MP4-контейнера. Расширение переупаковывает его в **нативный `.flac`** прямо в браузере (без потери качества — аудио бит-в-бит то же самое). Галка «FLAC → нативный .flac» в попапе включена по умолчанию; если выключить — сохранится `.m4a` (тот же lossless, чуть быстрее). Десктоп делает то же через ffmpeg.
 
-1. Скачай или клонируй этот репозиторий
-2. Открой `edge://extensions` (или `chrome://extensions`)
-3. Включи **Режим разработчика**
-4. Нажми **"Загрузить распакованное расширение"**
-5. Выбери папку с файлами расширения
+> ℹ️ **Обложка не видна в проводнике Windows 11?** Это особенность проводника — он капризен с миниатюрами аудио. Сам тег с обложкой на месте: проверь в плеере (AIMP, foobar, VLC) или через ПКМ → Свойства → Подробно.
 
-## Использование
+---
 
-### На странице Я.Музыки
-- Зайди на [music.yandex.ru](https://music.yandex.ru), включи трек
-- Кликни жёлтую кнопку ⬇ справа снизу (можно перетащить куда удобно)
-- Или жми ⬇ рядом с любым треком в списке
-- На страницах альбомов/плейлистов появится кнопка «Скачать альбом/плейлист»
+## 🖥️ Десктопная программа
 
-### По ссылке (любой сервис)
-- Кликни иконку расширения
-- Вставь ссылку в поле «Скачать по ссылке»
-- Нажми «Скачать» — батч пойдёт в подпапку с именем сервиса (`bandcamp/`, `soundcloud/`, …)
-
-## Архитектура
-
-```
-├── manifest.json          # MV3 конфигурация
-├── background.js          # Service Worker — координатор, импортит lib/ + services/
-├── content.js             # Content Script для music.yandex.* — UI на странице
-├── content.css            # Стили кнопок/нотификаций на странице
-├── popup.html / .js / .css # Popup с paste-link и текущим треком
-│
-├── lib/
-│   ├── md5.js             # MD5 (Yandex audio URL signing)
-│   └── core.js            # Service registry + utils
-│
-├── services/
-│   ├── yandex.js          # Yandex Music adapter
-│   ├── bandcamp.js        # Bandcamp adapter (data-tralbum parsing)
-│   └── soundcloud.js      # SoundCloud adapter (api-v2 + extracted client_id)
-│
-├── downloader.py          # Десктопная программа (Python + tkinter)
-└── icons/                 # Иконки
-```
-
-### Адаптер-паттерн
-
-Каждый сервис в `services/` регистрируется в общем реестре и реализует:
-- `parseUrl(url)` → `{type, ...}` или `null`
-- `listTracks(parsed)` → массив треков
-- `getAudioUrl(track, ctx)` → mp3 URL
-- `getFilename(track)` → имя файла
-
-Добавить новый сервис = создать один файл в `services/` + прописать его в `manifest.json` (host_permissions + scripts массив в background и при необходимости content_scripts).
-
-## Технологии
-
-- **Manifest V3** — актуальный формат
-- **chrome.webRequest** — перехват аудио-потоков Я.Музыки
-- **chrome.downloads** — сохранение файлов
-- **Pointer Events** — drag & drop FAB
-- **MutationObserver** — отслеживание SPA-навигации
-- **Web Crypto API** — ready для будущего HLS-AES (VK Музыка)
-
-## Десктопная программа
-
-В репо есть **два** варианта десктопа:
-
-### `desktop/` — универсальный (новый)
-
-GUI на PySide6 поверх **yt-dlp** (1800+ сайтов: Я.Музыка, YouTube, SoundCloud, Bandcamp, VK, Twitch, Vimeo, RuTube, и т.д.). Аудио (mp3/m4a/flac/opus) и видео (mp4 до 4K). Поддержка cookies из браузера для авторизованных сервисов.
+Универсальный загрузчик на **PySide6 + yt-dlp** — 1800+ сайтов, аудио и видео.
 
 ```bash
 cd desktop
@@ -185,23 +93,82 @@ python main.py
 
 Сборка `.exe`: `python build.py` → `dist/MusicDownloader.exe`. Подробности — [desktop/README.md](desktop/README.md).
 
-### `downloader.py` — Я.Музыка-only (legacy)
+> ⚠️ Десктоп требует Windows 10+ (PySide6 не ставится на Win7).
 
-Простая программа на tkinter, только для Я.Музыки, без зависимостей кроме `requests`. Нужен OAuth-токен.
+### 🪟 Версия для Windows 7
 
-```bash
-pip install requests
-python downloader.py
+Для Win7 есть отдельная лёгкая программа **`MusicDownloader-Lite.exe`** (в [Releases](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)) — только Яндекс.Музыка (FLAC / MP3 + обложка + теги + текст), на tkinter. Подробности — [lite/README.md](lite/README.md).
+
+---
+
+## 🌐 Поддерживаемые сервисы
+
+| Сервис | Расширение | Десктоп |
+|---|---|---|
+| **Яндекс.Музыка** | ✅ FLAC + MP3, обложка, теги, текст | ✅ |
+| **Bandcamp** | ✅ треки, альбомы, дискография | ✅ |
+| **SoundCloud** | ✅ треки и плейлисты | ✅ |
+| **YouTube / YouTube Music** | — | ✅ |
+| **VK / Twitch / Vimeo / RuTube / +1800** | — | ✅ (через yt-dlp) |
+
+> **Spotify / Apple Music / Tidal / Deezer** скачать напрямую невозможно (Widevine DRM расшифровывается в защищённом модуле браузера). Поддержка через YouTube-matching — в планах.
+
+---
+
+## 🧩 Архитектура (расширение)
+
+```
+manifest.json            # MV3 конфигурация
+background.js            # Service Worker — скачивание, теги, расшифровка, токен
+content.js              # UI на странице music.yandex.* (кнопки, FAB)
+popup.html/js/css       # Попап: paste-link, качество, токен, настройки
+offscreen.html/js       # Offscreen-документ для blob URL (большие файлы)
+inject/
+  yam-fetch-hook.js     # Перехват OAuth-токена из запросов страницы (MAIN world)
+lib/
+  core.js               # Реестр сервисов + утилиты
+  md5.js                # MD5 (подпись audio URL)
+  id3.js                # ID3v2 writer (теги + обложка + текст для MP3)
+  flacremux.js          # FLAC-в-MP4 → нативный .flac + VorbisComment + Picture
+  mp4cover.js           # MP4 covr atom (теги + обложка для .m4a)
+services/
+  yandex.js             # Яндекс.Музыка (api.music.yandex.net + V2 FLAC)
+  bandcamp.js           # Bandcamp (data-tralbum)
+  soundcloud.js         # SoundCloud (api-v2 + client_id)
 ```
 
-## Roadmap
+**Адаптер сервиса** реализует: `parseUrl(url)`, `listTracks(parsed)`, `getAudioUrl(track, ctx)`, `getFilename(track)`. Новый сервис = один файл в `services/` + регистрация в манифесте. См. [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- [ ] **VK Музыка** (HLS-AES decryption через Web Crypto)
-- [ ] **YouTube Music** (signature decipher из player.js)
-- [ ] **Spotify / Apple Music / Tidal / Deezer** через YouTube-matching (как `spotdl`) — метаданные публичные, поиск аналога на YouTube, скачивание оттуда
+### Как работает FLAC без ffmpeg
+
+Яндекс отдаёт FLAC зашифрованным (AES-CTR) внутри MP4. Расширение:
+1. Расшифровывает поток (`crypto.subtle`, ключ из API)
+2. Извлекает FLAC STREAMINFO + фреймы из MP4 (точно по таблицам `stsz/stco/stsc`)
+3. Переупаковывает в нативный FLAC-контейнер + вшивает обложку/теги/текст
+
+Всё в браузере, без перекодирования — результат байт-в-байт идентичен `ffmpeg -c:a copy`.
+
+---
+
+## ❓ FAQ
+
+**Не появляется кнопка скачивания** — залогинься на music.yandex.ru и обнови страницу (F5). Расширение ловит токен из запросов залогиненной сессии.
+
+**«Сохранить как» не открывает диалог** — проверь что галка стоит в попапе. Для альбомов/плейлистов диалог отключён (иначе он выскакивал бы на каждый трек).
+
+**FLAC не качается** — нужен активный Я.Плюс. Без подписки доступен только MP3 320.
+
+**Десктоп не запускается на Windows 7** — PySide6 требует Win10+. Используй расширение или **`MusicDownloader-Lite.exe`** (Я.Музыка, специально для Win7).
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] VK Музыка в расширении (HLS-AES)
+- [ ] YouTube Music в расширении
+- [ ] Spotify / Apple Music через YouTube-matching
 - [ ] On-page кнопки для Bandcamp / SoundCloud
-- [ ] FLAC/HQ-селектор качества для Я.Музыки
 
 ## Лицензия
 
-MIT
+[MIT](LICENSE) — используй как хочешь, сохраняй копирайт. Контрибьюции приветствуются ([CONTRIBUTING.md](CONTRIBUTING.md)).
