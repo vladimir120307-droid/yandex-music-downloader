@@ -180,6 +180,7 @@
 
   function shapeTrack(t, defaultAlbumId) {
     const album = (t.albums || [])[0] || {};
+    const pos = album.trackPosition || {};
     return {
       trackId: String(t.id || t.realId || ''),
       albumId: String(album.id || defaultAlbumId || ''),
@@ -187,7 +188,12 @@
       artist: (t.artists || []).map(a => a.name).filter(Boolean).join(', '),
       version: t.version || '',
       album: album.title || '',
+      albumArtist: (album.artists || []).map(a => a.name).filter(Boolean).join(', '),
       year: album.year || '',
+      genre: album.genre || '',
+      trackNum: pos.index || 0,        // номер трека в альбоме
+      trackTotal: album.trackCount || 0,
+      discNum: pos.volume || 0,        // номер диска
       coverUri: t.coverUri || album.coverUri || '',
     };
   }
@@ -239,11 +245,16 @@
     if (!track || !track.trackId) return track;
     try {
       const token = await getToken();
-      if (!track.coverUri || !track.album) {
+      if (!track.coverUri || !track.album || !track.genre) {
         const enriched = await fetchSingleTrack(track.trackId, track.albumId, token);
         track.coverUri = track.coverUri || enriched.coverUri || '';
         track.album = track.album || enriched.album || '';
+        track.albumArtist = track.albumArtist || enriched.albumArtist || '';
         track.year = track.year || enriched.year || '';
+        track.genre = track.genre || enriched.genre || '';
+        track.trackNum = track.trackNum || enriched.trackNum || 0;
+        track.trackTotal = track.trackTotal || enriched.trackTotal || 0;
+        track.discNum = track.discNum || enriched.discNum || 0;
         track.title = track.title || enriched.title || '';
         track.artist = track.artist || enriched.artist || '';
       }

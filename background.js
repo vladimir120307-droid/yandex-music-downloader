@@ -168,8 +168,9 @@ async function downloadAndTag(opts) {
   if (realContainer === 'mp3' && (coverBytes || opts.title || opts.artist || opts.album || opts.lyrics)) {
     try {
       const tag = globalThis.YMD_ID3.buildID3v2({
-        title: opts.title, artist: opts.artist, album: opts.album,
-        year: opts.year, lyrics: opts.lyrics, cover: coverBytes, coverMime: 'image/jpeg',
+        title: opts.title, artist: opts.artist, album: opts.album, albumArtist: opts.albumArtist,
+        year: opts.year, genre: opts.genre, trackNum: opts.trackNum, trackTotal: opts.trackTotal,
+        discNum: opts.discNum, lyrics: opts.lyrics, cover: coverBytes, coverMime: 'image/jpeg',
       });
       bytes = globalThis.YMD_ID3.prependID3v2ToMP3(bytes, tag);
       debug.tagged = true;
@@ -182,8 +183,9 @@ async function downloadAndTag(opts) {
   // и добавляем covr atom.
   if (realContainer === 'm4a') {
     const tagOpts = {
-      title: opts.title, artist: opts.artist, album: opts.album, year: opts.year,
-      lyrics: opts.lyrics, cover: coverBytes, coverMime: 'image/jpeg',
+      title: opts.title, artist: opts.artist, album: opts.album, albumArtist: opts.albumArtist,
+      year: opts.year, genre: opts.genre, trackNum: opts.trackNum, trackTotal: opts.trackTotal,
+      discNum: opts.discNum, lyrics: opts.lyrics, cover: coverBytes, coverMime: 'image/jpeg',
     };
     let remuxed = false;
     if (opts.flacNative) {
@@ -386,7 +388,12 @@ async function downloadByUrl(rawUrl) {
           title: t.title || '',
           artist: t.artist || '',
           album: t.album || '',
+          albumArtist: t.albumArtist || '',
           year: t.year || '',
+          genre: t.genre || '',
+          trackNum: t.trackNum || 0,
+          trackTotal: t.trackTotal || 0,
+          discNum: t.discNum || 0,
           lyrics: t.lyrics || '',
           flacNative,
           saveAs: saveAs && !isBatch,
@@ -473,7 +480,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       title: message.title,
       artist: message.artist,
       album: message.album,
+      albumArtist: message.albumArtist,
       year: message.year,
+      genre: message.genre,
+      trackNum: message.trackNum,
+      trackTotal: message.trackTotal,
+      discNum: message.discNum,
       lyrics: message.lyrics,
       flacNative: !!message.flacNative,
       saveAs: !!message.saveAs,

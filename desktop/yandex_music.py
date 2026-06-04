@@ -128,7 +128,7 @@ def _api_post(path: str, body: str, token: Optional[str]) -> dict:
 
 def _shape_track(t: dict, default_album: str = '') -> dict:
     album = (t.get('albums') or [{}])[0] if t.get('albums') else {}
-    # coverUri может быть на треке или на альбоме — берём что есть
+    pos = album.get('trackPosition') or {}
     cover_uri = t.get('coverUri') or album.get('coverUri') or ''
     return {
         'trackId': str(t.get('id') or t.get('realId') or ''),
@@ -136,7 +136,12 @@ def _shape_track(t: dict, default_album: str = '') -> dict:
         'title': t.get('title') or '',
         'artist': ', '.join(a.get('name', '') for a in (t.get('artists') or []) if a.get('name')),
         'album': album.get('title', ''),
+        'albumArtist': ', '.join(a.get('name', '') for a in (album.get('artists') or []) if a.get('name')),
         'year': album.get('year') or '',
+        'genre': album.get('genre') or '',
+        'trackNum': pos.get('index') or 0,
+        'trackTotal': album.get('trackCount') or 0,
+        'discNum': pos.get('volume') or 0,
         'coverUri': cover_uri,
     }
 
@@ -191,7 +196,12 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
     title = track.get('title') or ''
     artist = track.get('artist') or ''
     album = track.get('album') or ''
+    album_artist = track.get('albumArtist') or ''
     year = str(track.get('year') or '') or None
+    genre = track.get('genre') or ''
+    track_num = track.get('trackNum') or 0
+    track_total = track.get('trackTotal') or 0
+    disc_num = track.get('discNum') or 0
     lyrics = track.get('lyrics') or ''
 
     is_mp3 = head[:3] == b'ID3' or (len(head) > 1 and head[0] == 0xff and (head[1] & 0xe0) == 0xe0)
@@ -200,7 +210,8 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
 
     try:
         if is_mp3 or (codec == 'mp3' and not is_flac and not is_mp4):
-            from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, TDRC, USLT, ID3NoHeaderError
+            from mutagen.id3 import (ID3, APIC, TIT2, TPE1, TPE2, TALB, TDRC, TCON,
+                                     TRCK, TPOS, USLT, ID3NoHeaderError)
             try:
                 audio = ID3(file_path)
             except ID3NoHeaderError:
@@ -211,7 +222,12 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
             if title: audio.add(TIT2(encoding=1, text=title))
             if artist: audio.add(TPE1(encoding=1, text=artist))
             if album: audio.add(TALB(encoding=1, text=album))
+            if album_artist: audio.add(TPE2(encoding=1, text=album_artist))
             if year: audio.add(TDRC(encoding=1, text=year))
+            if genre: audio.add(TCON(encoding=1, text=genre))
+            if track_num:
+                audio.add(TRCK(encoding=1, text=(f'{track_num}/{track_total}' if track_total else str(track_num))))
+            if disc_num: audio.add(TPOS(encoding=1, text=str(disc_num)))
             if lyrics:
                 audio.delall('USLT')
                 audio.add(USLT(encoding=1, lang='rus', desc='', text=lyrics))
@@ -225,7 +241,12 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
             if title: audio['title'] = title
             if artist: audio['artist'] = artist
             if album: audio['album'] = album
+            if album_artist: audio['albumartist'] = album_artist
             if year: audio['date'] = year
+            if genre: audio['genre'] = genre
+            if track_num: audio['tracknumber'] = str(track_num)
+            if track_total: audio['tracktotal'] = str(track_total)
+            if disc_num: audio['discnumber'] = str(disc_num)
             if lyrics: audio['lyrics'] = lyrics
             if cover_bytes:
                 pic = Picture()
@@ -242,7 +263,11 @@ def _embed_metadata_and_cover(file_path: Path, codec: str, track: dict,
             if title: audio['\xa9nam'] = title
             if artist: audio['\xa9ART'] = artist
             if album: audio['\xa9alb'] = album
+            if album_artist: audio['aART'] = album_artist
             if year: audio['\xa9day'] = year
+            if genre: audio['\xa9gen'] = genre
+            if track_num: audio['trkn'] = [(track_num, track_total or 0)]
+            if disc_num: audio['disk'] = [(disc_num, 0)]
             if lyrics: audio['\xa9lyr'] = lyrics
             if cover_bytes:
                 audio['covr'] = [MP4Cover(cover_bytes, imageformat=MP4Cover.FORMAT_JPEG)]
