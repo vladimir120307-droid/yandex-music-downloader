@@ -72,6 +72,9 @@
     if (m) return { type: 'album', albumId: m[1] };
     m = p.match(/\/users\/([^/]+)\/playlists\/(\d+)/);
     if (m) return { type: 'playlist', owner: m[1], kinds: m[2] };
+    // Новый формат: /playlists/{uuid} (в т.ч. с префиксом lk./dm.)
+    m = p.match(/\/playlists\/((?:[a-z]{1,4}\.)?[a-f0-9-]{32,40})/i);
+    if (m) return { type: 'playlist', uuid: m[1] };
     return null;
   }
 
@@ -113,7 +116,7 @@
     });
   }
 
-  async function dispatchDownload(result, filename, track) {
+  async function dispatchDownload(result, filename, track, dlOpts) {
     // result либо строка (прямой URL), либо {url, key, encrypted} для AES-CTR.
     // track содержит {trackId, title, artist, album, coverUri, _codec, ...} —
     // прокидываем в background чтобы вшил ID3v2+обложку (для MP3).
@@ -121,10 +124,13 @@
     const key = (typeof result === 'object') ? result.key : null;
     if (!url) return { success: false, error: 'нет URL' };
 
-    const flacNative = await new Promise(r => {
-      try { chrome.storage.local.get('yamFlacNative', d => r(d?.yamFlacNative !== false)); }
-      catch { r(true); }
+    const prefs = await new Promise(r => {
+      try { chrome.storage.local.get(['yamFlacNative', 'saveAs'], d => r(d || {})); }
+      catch { r({}); }
     });
+    const flacNative = prefs.yamFlacNative !== false;
+    // saveAs только для одиночных скачиваний — в batch диалог на каждый трек не нужен
+    const saveAs = !!prefs.saveAs && !(dlOpts && dlOpts.batch);
 
     return new Promise((resolve) => {
       chrome.runtime.sendMessage({
@@ -138,7 +144,7 @@
         year: (track && track.year) || '',
         lyrics: (track && track.lyrics) || '',
         flacNative,
-        saveAs: false,
+        saveAs,
       }, (resp) => {
         if (resp?.debug) {
           const d = resp.debug;
@@ -184,15 +190,16 @@
     }
   }
 
-  async function downloadTrackById(trackId, albumId, titleInfo) {
+  async function downloadTrackById(trackId, albumId, titleInfo, dlOpts) {
     try {
       showNotification('Получаю ссылку...', 'loading');
-      const track = { trackId, albumId, title: titleInfo?.title || '', artist: titleInfo?.artist || '', origin: ORIGIN };
+      const track = { trackId, albumId, title: titleInfo?.title || '', artist: titleInfo?.artist || '',
+        coverUri: titleInfo?.coverUri || '', album: titleInfo?.album || '', year: titleInfo?.year || '', origin: ORIGIN };
       const result = await yandex.getAudioUrl(track, {});
       if (result) {
         try { const wantLyrics = await new Promise(r => { try { chrome.storage.local.get("yamLyrics", d => r(!!(d && d.yamLyrics))); } catch { r(false); } }); await yandex.enrichTrack(track, { wantLyrics }); } catch {}
         const fn = yandex.getFilename(track) || `track_${trackId}.mp3`;
-        const dl = await dispatchDownload(result, fn, track);
+        const dl = await dispatchDownload(result, fn, track, dlOpts);
         if (!dl.success) {
           showNotification('Ошибка: ' + (dl.error || ''), 'error');
           return dl;
@@ -218,7 +225,7 @@
     for (let i = 0; i < tracks.length; i++) {
       const t = tracks[i];
       showNotification(`${i + 1}/${tracks.length}: ${t.artist} - ${t.title}`, 'loading');
-      try { await downloadTrackById(t.trackId, t.albumId, t); downloaded++; } catch { /* skip */ }
+      try { await downloadTrackById(t.trackId, t.albumId, t, { batch: true }); downloaded++; } catch { /* skip */ }
       await sleep(800);
     }
     showNotification(`✓ Скачано ${downloaded}/${tracks.length}`, 'success');
@@ -315,10 +322,20 @@
   }
 
   function injectPageButton() {
-    if (document.querySelector('.ymd-page-btn')) return;
     const pageInfo = parseCurrentUrl();
-    if (!pageInfo || pageInfo.type === 'track') return;
-    const header = document.querySelector('[class*="PageHeaderPlaylist"], [class*="PageHeaderBase"], [class*="CommonPageHeader"], [class*="PageAlbum"]');
+    if (!pageInfo || pageInfo.type === 'track') {
+      // ушли со страницы альбома/плейлиста — убрать старую кнопку
+      const old = document.querySelector('.ymd-page-btn');
+      if (old) old.remove();
+      return;
+    }
+    if (document.querySelector('.ymd-page-btn')) return;
+    // Ищем заголовок страницы — селекторы Я.Музыки меняются, берём широко
+    const header = document.querySelector(
+      '[class*="PageHeaderPlaylist"], [class*="PageHeaderBase"], [class*="CommonPageHeader"], ' +
+      '[class*="PageAlbum"], [class*="PageHeader"], [class*="Header_root"], ' +
+      '[data-test-id*="HEADER"], main h1, [class*="d-generic-page-head"]'
+    );
     const label = pageInfo.type === 'album' ? 'Скачать альбом' : 'Скачать плейлист';
     const btn = document.createElement('button');
     btn.className = 'ymd-page-btn';
@@ -333,8 +350,13 @@
       btn.querySelector('span').textContent = `Скачано ${result.downloaded}/${result.total}`;
       setTimeout(() => { btn.classList.remove('ymd-success'); btn.querySelector('span').textContent = label; }, 5000);
     });
-    if (header) header.appendChild(btn);
-    else { btn.style.cssText = 'position:fixed;bottom:150px;right:20px;z-index:999999;'; document.body.appendChild(btn); }
+    if (header) {
+      header.appendChild(btn);
+    } else {
+      // Хедер не нашли — показываем плавающую кнопку (всегда доступна)
+      btn.style.cssText = 'position:fixed;bottom:150px;right:20px;z-index:999999;box-shadow:0 4px 16px rgba(0,0,0,0.4);';
+      document.body.appendChild(btn);
+    }
   }
 
   function showNotification(text, type) {
