@@ -25,7 +25,11 @@ python build.py
 
 ## ffmpeg
 
-Программа сама находит ffmpeg в PATH или рядом с собой. Без ffmpeg будет работать только то, что отдаётся прямым mp3 (Bandcamp, частично Я.Музыка) — YouTube/SoundCloud/видео потребуют конвертации.
+Программа сама находит ffmpeg в PATH или рядом с собой (или скачивает кнопкой «Установить ffmpeg»).
+
+- **Я.Музыка** — MP3 и FLAC качаются **без ffmpeg** (ffmpeg нужен только чтобы превратить FLAC-в-MP4 в нативный `.flac`, см. ниже).
+- **Bandcamp** — прямой mp3, без ffmpeg.
+- **YouTube / SoundCloud / видео** — ffmpeg нужен для склейки/конвертации.
 
 > 🎵 **FLAC из Я.Музыки:** Яндекс отдаёт lossless внутри MP4-контейнера. С ffmpeg программа автоматически ремуксит его в **нативный `.flac`** (без потери качества — спектрограф и FLAC-тулзы открывают). Без ffmpeg файл сохранится как `.m4a` (тоже lossless, но не нативный FLAC).
 
@@ -67,14 +71,19 @@ python build.py
 
 ```
 desktop/
-├── main.py            # Entry point
-├── window.py          # PySide6 MainWindow + темa
-├── core.py            # yt-dlp worker (QThread)
-├── ffmpeg_helper.py   # detect / suggest install
-├── settings.py        # JSON-config persistence
-├── build.py           # PyInstaller builder
-└── requirements.txt   # PySide6, yt-dlp
+├── main.py             # Entry point
+├── window.py           # PySide6 MainWindow + тема
+├── core.py             # Worker (QThread): yt-dlp для большинства, yandex_music для Я.М.
+├── yandex_music.py     # Движок Я.Музыки: api.music.yandex.net, FLAC/MP3,
+│                       #   обложка, теги, текст, ремукс FLAC-в-MP4 → .flac
+├── ffmpeg_helper.py    # поиск ffmpeg
+├── ffmpeg_installer.py # авто-скачивание ffmpeg
+├── settings.py         # хранение настроек
+├── build.py            # PyInstaller builder
+└── requirements.txt    # PySide6, yt-dlp, mutagen, pycryptodome
 ```
+
+> Тот же `yandex_music.py` переиспользуется в [`lite/`](../lite) — версии для Windows 7 на tkinter.
 
 ## DRM
 
