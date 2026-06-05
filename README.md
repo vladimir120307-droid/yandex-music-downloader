@@ -97,7 +97,13 @@ python main.py
 
 ### 🪟 Версия для Windows 7
 
-Для Win7 есть отдельная лёгкая программа **`MusicDownloader-Lite.exe`** (в [Releases](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)) — только Яндекс.Музыка (FLAC / MP3 + обложка + теги + текст), на tkinter. Подробности — [lite/README.md](lite/README.md).
+Для Win7 есть отдельная программа **`MusicDownloader-Lite.exe`** (в [Releases](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)) на tkinter:
+- **Яндекс.Музыка** — FLAC / MP3 + обложка + теги + текст (наш движок, работает всегда)
+- **YouTube / SoundCloud / Bandcamp / VK** — через yt-dlp 2024.10.22 (последний с Python 3.8)
+
+> ⚠️ YouTube на Win7-версии может не работать — yt-dlp для Python 3.8 устарел (~окт 2024), а YouTube часто меняет защиту. Стабильные сайты и Яндекс работают. Для надёжного YouTube — десктоп на Win10+.
+
+Подробности — [lite/README.md](lite/README.md).
 
 ---
 

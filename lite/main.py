@@ -23,6 +23,22 @@ from tkinter import ttk, filedialog, messagebox
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import yandex_music
+try:
+    import ytdlp_worker
+    HAS_YTDLP = True
+except Exception:
+    HAS_YTDLP = False
+
+# Форматы для yt-dlp (не-Яндекс сайты)
+YTDLP_FORMATS = [
+    ('Аудио · MP3 320', dict(audio_format='mp3', audio_quality='320', video='')),
+    ('Аудио · M4A',     dict(audio_format='m4a', audio_quality='0', video='')),
+    ('Аудио · FLAC',    dict(audio_format='flac', audio_quality='0', video='')),
+    ('Аудио · Opus',    dict(audio_format='opus', audio_quality='0', video='')),
+    ('Видео · Лучшее',  dict(audio_format='', audio_quality='', video='best')),
+    ('Видео · 1080p',   dict(audio_format='', audio_quality='', video='1080')),
+    ('Видео · 720p',    dict(audio_format='', audio_quality='', video='720')),
+]
 
 OAUTH_URL = (
     'https://oauth.yandex.ru/authorize?response_type=token'
@@ -84,10 +100,11 @@ class App:
         # Заголовок
         head = tk.Frame(self.root, bg=BG)
         head.pack(fill='x', pady=(14, 6), **pad)
-        tk.Label(head, text='🎵 Music Downloader Lite', bg=BG, fg=YELLOW,
+        tk.Label(head, text='🎵 Music Downloader (Windows 7)', bg=BG, fg=YELLOW,
                  font=('Segoe UI', 16, 'bold')).pack(anchor='w')
-        tk.Label(head, text='Яндекс.Музыка · FLAC / MP3 · обложка · теги · текст',
-                 bg=BG, fg=GREY, font=('Segoe UI', 9)).pack(anchor='w')
+        sub = ('Яндекс.Музыка (FLAC/MP3) + YouTube · SoundCloud · Bandcamp · VK · и др.'
+               if HAS_YTDLP else 'Яндекс.Музыка · FLAC / MP3 · обложка · теги · текст')
+        tk.Label(head, text=sub, bg=BG, fg=GREY, font=('Segoe UI', 9)).pack(anchor='w')
 
         # Токен
         self._section('Токен Яндекс.Музыки (нужен один раз):')
@@ -111,17 +128,26 @@ class App:
         ue.pack(fill='x', ipady=5, **pad)
         ue.bind('<Return>', lambda e: self.start())
 
-        # Качество + текст
+        # Качество Я.Музыки + текст
         opt = tk.Frame(self.root, bg=BG); opt.pack(fill='x', pady=(10, 0), **pad)
-        tk.Label(opt, text='Качество:', bg=BG, fg=WHITE, font=('Segoe UI', 9)).pack(side='left')
+        tk.Label(opt, text='Я.Музыка:', bg=BG, fg=WHITE, font=('Segoe UI', 9)).pack(side='left')
         self.quality_var = tk.StringVar(value=self.settings.get('quality', 'auto'))
-        qbox = ttk.Combobox(opt, textvariable=self.quality_var, state='readonly', width=28,
-                            values=['auto', 'flac', 'mp3-320'])
-        qbox.pack(side='left', padx=(6, 16))
+        ttk.Combobox(opt, textvariable=self.quality_var, state='readonly', width=20,
+                     values=['auto', 'flac', 'mp3-320']).pack(side='left', padx=(6, 16))
         self.lyrics_var = tk.BooleanVar(value=self.settings.get('lyrics', '0') == '1')
         tk.Checkbutton(opt, text='Текст песни', variable=self.lyrics_var, bg=BG, fg=WHITE,
                        selectcolor=BG2, activebackground=BG, activeforeground=WHITE,
                        font=('Segoe UI', 9)).pack(side='left')
+
+        # Формат для других сайтов (yt-dlp)
+        if HAS_YTDLP:
+            opt2 = tk.Frame(self.root, bg=BG); opt2.pack(fill='x', pady=(6, 0), **pad)
+            tk.Label(opt2, text='Др. сайты:', bg=BG, fg=WHITE, font=('Segoe UI', 9)).pack(side='left')
+            self.ytfmt_var = tk.StringVar(value=self.settings.get('ytfmt', YTDLP_FORMATS[0][0]))
+            ttk.Combobox(opt2, textvariable=self.ytfmt_var, state='readonly', width=20,
+                         values=[n for n, _ in YTDLP_FORMATS]).pack(side='left', padx=(6, 8))
+            tk.Label(opt2, text='(YouTube/SoundCloud/Bandcamp/VK — нужен ffmpeg)',
+                     bg=BG, fg=GREY, font=('Segoe UI', 8)).pack(side='left')
 
         # Папка
         self._section('Папка для сохранения:')
@@ -196,35 +222,54 @@ class App:
         url = self.url_var.get().strip()
         token = self.token_var.get().strip()
         if not url:
-            messagebox.showwarning('Внимание', 'Вставь ссылку на трек/альбом/плейлист'); return
-        if not token:
+            messagebox.showwarning('Внимание', 'Вставь ссылку'); return
+        is_yandex = yandex_music.is_yandex_music_url(url)
+        if is_yandex and not token:
             if messagebox.askyesno('Нужен токен',
-                                    'Для скачивания нужен токен Я.Музыки. Открыть страницу получения?'):
+                                    'Для Яндекс.Музыки нужен токен. Открыть страницу получения?'):
                 self._open_oauth()
+            return
+        if not is_yandex and not HAS_YTDLP:
+            messagebox.showerror('Не поддерживается',
+                                 'yt-dlp не установлен — другие сайты недоступны. Только Яндекс.Музыка.')
             return
         # Сохраняем настройки
         self.settings.update({'quality': self.quality_var.get(), 'dir': self.dir_var.get(),
                               'lyrics': '1' if self.lyrics_var.get() else '0'})
+        if HAS_YTDLP:
+            self.settings['ytfmt'] = self.ytfmt_var.get()
         save_settings(self.settings)
 
         self._cancel = False
         self.dl_btn.config(text='Остановить')
         self.prog['value'] = 0
-        threading.Thread(target=self._work, args=(url, token), daemon=True).start()
+        threading.Thread(target=self._work, args=(url, token, is_yandex), daemon=True).start()
 
-    def _work(self, url, token):
+    def _work(self, url, token, is_yandex):
         try:
             self._set_status('Получаю данные…')
-            yandex_music.download(
-                url, self.dir_var.get(), token=token,
-                info_cb=self._on_info, progress_cb=self._on_progress,
-                cancel_check=lambda: self._cancel,
-                quality=self.quality_var.get(),
-                want_lyrics=self.lyrics_var.get(),
-            )
+            if is_yandex:
+                yandex_music.download(
+                    url, self.dir_var.get(), token=token,
+                    info_cb=self._on_info, progress_cb=self._on_progress,
+                    cancel_check=lambda: self._cancel,
+                    quality=self.quality_var.get(),
+                    want_lyrics=self.lyrics_var.get(),
+                )
+            else:
+                from ffmpeg_helper import find_ffmpeg
+                fmt = dict(YTDLP_FORMATS)[self.ytfmt_var.get()]
+                ytdlp_worker.download(
+                    url, self.dir_var.get(),
+                    audio_format=fmt['audio_format'], audio_quality=fmt['audio_quality'],
+                    video_max_height=fmt['video'], ffmpeg_path=find_ffmpeg(),
+                    cookies_browser=None,
+                    info_cb=self._on_info, progress_cb=self._on_progress,
+                    cancel_check=lambda: self._cancel,
+                )
             self._set_status('Готово!'); self.prog['value'] = 100
             self._log('✓ Скачивание завершено')
-        except yandex_music.YMCancelled:
+        except (yandex_music.YMCancelled,) + ((ytdlp_worker.YtCancelled,) if HAS_YTDLP else ()):
             self._set_status('Отменено'); self._log('Отменено пользователем')
         except Exception as e:
             self._set_status('Ошибка: ' + str(e)[:80])

@@ -1,2 +1,4 @@
 mutagen>=1.45.0
 pycryptodome>=3.18.0
+# yt-dlp 2024.10.22 — последняя версия с поддержкой Python 3.8 (Windows 7)
+yt-dlp==2024.10.22
