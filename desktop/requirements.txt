@@ -1,5 +1,5 @@
-PySide6>=6.5
-yt-dlp>=2024.10.07
-pycryptodome>=3.20.0
+PySide6>=6.11.1
+yt-dlp>=2026.3.17
+pycryptodome>=3.23.0
 mutagen>=1.47.0
 

@@ -14,6 +14,7 @@
 - треки  (/album/X/track/Y, /track/Y)
 - альбомы (/album/X)
 - плейлисты — старые (/users/owner/playlists/N) и новые UUID (/playlists/{uuid})
+- подкасты (/podcast/X, /podcast/X/episode/Y) — название шоу идёт как артист
 - mp3 напрямую, без ffmpeg
 """
 from __future__ import annotations
@@ -75,6 +76,13 @@ def _parse_url(url: str) -> dict:
     m = re.search(r'/album/(\d+)', p)
     if m:
         return {'type': 'album', 'albumId': m.group(1)}
+    # Подкасты: шоу = альбом, эпизод = трек (у Яндекса та же модель данных)
+    m = re.search(r'/podcast/(\d+)/episode/(\d+)', p)
+    if m:
+        return {'type': 'track', 'albumId': m.group(1), 'trackId': m.group(2)}
+    m = re.search(r'/podcast/(\d+)', p)
+    if m:
+        return {'type': 'album', 'albumId': m.group(1)}
     m = re.search(r'/users/([^/]+)/playlists/(\d+)', p)
     if m:
         return {'type': 'playlist', 'owner': m.group(1), 'kinds': m.group(2)}
@@ -134,7 +142,9 @@ def _shape_track(t: dict, default_album: str = '') -> dict:
         'trackId': str(t.get('id') or t.get('realId') or ''),
         'albumId': str(album.get('id') or default_album or ''),
         'title': t.get('title') or '',
-        'artist': ', '.join(a.get('name', '') for a in (t.get('artists') or []) if a.get('name')),
+        # У подкаст-эпизодов artists пустой — подставляем название шоу
+        'artist': (', '.join(a.get('name', '') for a in (t.get('artists') or []) if a.get('name'))
+                   or album.get('title', '')),
         'album': album.get('title', ''),
         'albumArtist': ', '.join(a.get('name', '') for a in (album.get('artists') or []) if a.get('name')),
         'year': album.get('year') or '',

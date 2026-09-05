@@ -24,6 +24,11 @@
     if (m) return { type: 'track', albumId: null, trackId: m[1] };
     m = p.match(/\/album\/(\d+)/);
     if (m) return { type: 'album', albumId: m[1] };
+    // Подкасты: шоу = альбом, эпизод = трек (у Яндекса та же модель данных)
+    m = p.match(/\/podcast\/(\d+)\/episode\/(\d+)/);
+    if (m) return { type: 'track', albumId: m[1], trackId: m[2] };
+    m = p.match(/\/podcast\/(\d+)/);
+    if (m) return { type: 'album', albumId: m[1] };
     m = p.match(/\/users\/([^/]+)\/playlists\/(\d+)/);
     if (m) return { type: 'playlist', owner: m[1], kinds: m[2] };
     // Новый формат: /playlists/{uuid}. UUID может быть голый ИЛИ с префиксом
@@ -185,7 +190,8 @@
       trackId: String(t.id || t.realId || ''),
       albumId: String(album.id || defaultAlbumId || ''),
       title: t.title || '',
-      artist: (t.artists || []).map(a => a.name).filter(Boolean).join(', '),
+      // У подкаст-эпизодов artists пустой — подставляем название шоу
+      artist: (t.artists || []).map(a => a.name).filter(Boolean).join(', ') || album.title || '',
       version: t.version || '',
       album: album.title || '',
       albumArtist: (album.artists || []).map(a => a.name).filter(Boolean).join(', '),
