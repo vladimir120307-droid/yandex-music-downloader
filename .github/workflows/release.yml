@@ -18,7 +18,7 @@ jobs:
     name: Build extension .zip
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Validate manifest.json
         run: python -c "import json; json.load(open('manifest.json'))"
@@ -50,7 +50,7 @@ jobs:
     name: Build desktop .exe (Windows)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v5
         with:
@@ -85,7 +85,7 @@ jobs:
     name: Build Lite .exe (Windows 7)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Python 3.8 — последний с поддержкой Windows 7
       - uses: actions/setup-python@v5
@@ -122,7 +122,7 @@ jobs:
     needs: [extension, desktop, lite]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/download-artifact@v4
         with:
@@ -132,7 +132,7 @@ jobs:
         run: ls -la artifacts/**/*
 
       - name: Create / update release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name || inputs.tag }}
           name: ${{ github.ref_name || inputs.tag }}
@@ -146,7 +146,7 @@ jobs:
 
             - **`music-downloader-extension-*.zip`** — расширение для Chromium-браузеров (Edge / Chrome / Яндекс.Браузер). Распакуй → `chrome://extensions` → «Режим разработчика» → «Загрузить распакованное» → выбери папку.
             - **`MusicDownloader-*.exe`** — десктоп для Windows 10/11. 1800+ сайтов (YouTube, SoundCloud, VK…). Просто запусти. Для конвертации нужен `ffmpeg.exe` рядом ([взять тут](https://github.com/yt-dlp/FFmpeg-Builds/releases)).
-            - **`MusicDownloader-Lite-*.exe`** — облегчённая версия для **Windows 7**. Только Яндекс.Музыка (FLAC / MP3 + обложка + теги + текст).
+            - **`MusicDownloader-Lite-*.exe`** — версия для **Windows 7** (там основной десктоп не запускается). Яндекс.Музыка (FLAC / MP3 + обложка + теги + текст) + YouTube/SoundCloud/Bandcamp/VK через yt-dlp.
 
             ---
 

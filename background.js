@@ -99,6 +99,37 @@ function chromeDownload(url, filename, saveAs) {
   });
 }
 
+// ═══ СТРАХОВКА ИМЕНИ ФАЙЛА (issue #47) ═══
+// Некоторые Chromium-сборки (напр. Яндекс.Браузер) игнорируют filename при
+// скачивании blob:/data: URL и сохраняют файл как «Загруженное» без расширения.
+// Перехватываем определение имени и подставляем своё.
+const expectedNames = [];
+
+function pushExpectedName(name) {
+  if (!name) return;
+  expectedNames.push(name);
+  if (expectedNames.length > 30) expectedNames.shift();
+}
+
+try {
+  chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+    // Трогаем только свои загрузки
+    if (item.byExtensionId && item.byExtensionId !== chrome.runtime.id) { suggest(); return; }
+    const cur = item.filename || '';
+    const hasExt = /\.[a-z0-9]{2,5}$/i.test(cur);
+    if (!hasExt && expectedNames.length) {
+      const name = expectedNames.shift();
+      console.log('[YMD] filename fallback:', cur || '(пусто)', '->', name);
+      suggest({ filename: name });
+      return;
+    }
+    if (expectedNames.length) expectedNames.shift();
+    suggest();
+  });
+} catch (e) {
+  console.warn('[YMD] onDeterminingFilename недоступен:', e && e.message);
+}
+
 function getSaveAs() {
   return new Promise(resolve => chrome.storage.local.get('saveAs', d => resolve(!!d.saveAs)));
 }
@@ -224,37 +255,85 @@ async function downloadAndTag(opts) {
     }
   }
 
-  // Сохранение через blob: URL (offscreen document). Для маленьких файлов
-  // (<5 МБ) фоллбэк на data: URL если offscreen почему-то недоступен.
-  const blobId = 'ymd-' + (++blobCounter);
+  // Имя файла: подстраховка на случай пустого/слишком длинного (Windows ~255).
+  opts.filename = safeFilename(opts.filename, realContainer);
+  debug.filename = opts.filename;
+  const mime = mimeForContainer(realContainer);
+
+  // ПУТЬ 1 (основной): data: URL. Здесь filename применяется надёжно во всех
+  // Chromium-браузерах. Blob-URL из offscreen некоторые сборки (Я.Браузер)
+  // сохраняют как «Загруженное» без расширения — см. issue #47.
+  pushExpectedName(opts.filename);
   try {
-    const url = await makeBlobUrlViaOffscreen(blobId, bytes, 'application/octet-stream');
+    const dataUrl = `data:${mime};base64,${bytesToBase64(bytes)}`;
     const id = await new Promise((resolve, reject) => {
-      chrome.downloads.download({ url, filename: opts.filename, saveAs: !!opts.saveAs }, (downloadId) => {
+      chrome.downloads.download({ url: dataUrl, filename: opts.filename, saveAs: !!opts.saveAs }, (downloadId) => {
         if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
         else resolve(downloadId);
       });
     });
-    // Revoke после завершения скачивания (или по таймеру как страховка)
-    revokeBlobUrlLater(blobId, id);
-    debug.via = 'offscreen-blob';
+    debug.via = 'data-url';
     return { ok: true, downloadId: id, size: bytes.length, debug };
   } catch (e) {
-    console.warn('[YMD] offscreen blob failed, fallback to data URL:', e.message);
-    // Фоллбэк: data URL (работает для небольших файлов)
-    let binary = '';
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-    }
-    const dataUrl = `data:application/octet-stream;base64,${btoa(binary)}`;
-    return new Promise(resolve => {
-      chrome.downloads.download({ url: dataUrl, filename: opts.filename, saveAs: !!opts.saveAs }, (id) => {
-        if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message, debug });
-        else { debug.via = 'data-url'; resolve({ ok: true, downloadId: id, size: bytes.length, debug }); }
-      });
-    });
+    console.warn('[YMD] data URL failed, fallback to offscreen blob:', e.message);
+    debug.dataUrlError = e.message;
   }
+
+  // ПУТЬ 2 (фолбэк): blob через offscreen — на случай если файл слишком
+  // большой для data: URL.
+  const blobId = 'ymd-' + (++blobCounter);
+  const url = await makeBlobUrlViaOffscreen(blobId, bytes, mime);
+  const id = await new Promise((resolve, reject) => {
+    chrome.downloads.download({ url, filename: opts.filename, saveAs: !!opts.saveAs }, (downloadId) => {
+      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+      else resolve(downloadId);
+    });
+  });
+  revokeBlobUrlLater(blobId, id);
+  debug.via = 'offscreen-blob';
+  return { ok: true, downloadId: id, size: bytes.length, debug };
+}
+
+// base64 из байтов чанками (String.fromCharCode.apply падает на больших массивах)
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+// Правильный MIME помогает браузеру определить тип и не терять расширение
+function mimeForContainer(container) {
+  switch (container) {
+    case 'mp3': return 'audio/mpeg';
+    case 'flac': return 'audio/flac';
+    case 'm4a': return 'audio/mp4';
+    default: return 'application/octet-stream';
+  }
+}
+
+// Гарантируем непустое, валидное и не слишком длинное имя с расширением
+function safeFilename(name, container) {
+  const ext = (container && container !== 'unknown') ? container : 'mp3';
+  let n = String(name || '').trim();
+  // запрещённые в Windows символы + control-символы
+  n = n.replace(/[<>:"|?*\x00-\x1f]/g, '_').replace(/\\/g, '_');
+  // оставляем только последний сегмент пути (папка допустима для batch)
+  const parts = n.split('/').filter(Boolean).map(p => p.trim()).filter(Boolean);
+  if (!parts.length) return `track.${ext}`;
+  let base = parts.pop();
+  if (!base || base === '.' || base === '..') base = `track.${ext}`;
+  // ограничиваем длину имени (Windows: путь ≤255)
+  const dot = base.lastIndexOf('.');
+  let stem = dot > 0 ? base.slice(0, dot) : base;
+  let e = dot > 0 ? base.slice(dot + 1) : '';
+  if (!e) e = ext;
+  if (stem.length > 120) stem = stem.slice(0, 120).trim();
+  if (!stem) stem = 'track';
+  base = `${stem}.${e}`;
+  return parts.length ? `${parts.join('/')}/${base}` : base;
 }
 
 // ─────────────────────── OFFSCREEN BLOB HELPER ───────────────────────
