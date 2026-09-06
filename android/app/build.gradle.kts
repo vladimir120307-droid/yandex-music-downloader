@@ -15,10 +15,22 @@ android {
         versionName = "1.0.0"
     }
 
+    // Ключ лежит прямо в репозитории: приложение раздаётся через GitHub, а не
+    // через Play Маркет, и подпись нужна лишь для того, чтобы Android разрешил
+    // установку и корректно ставил обновления поверх старой версии.
+    signingConfigs {
+        create("release") {
+            storeFile = file("../release.keystore")
+            storePassword = "ymdrelease"
+            keyAlias = "ymd"
+            keyPassword = "ymdrelease"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")  // подписываем debug-ключом
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
