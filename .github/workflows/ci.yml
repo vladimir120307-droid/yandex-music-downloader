@@ -37,3 +37,22 @@ jobs:
           python -m py_compile downloader.py
           python -m py_compile desktop/main.py desktop/window.py desktop/core.py desktop/settings.py desktop/ffmpeg_helper.py desktop/build.py desktop/yandex_music.py desktop/ffmpeg_installer.py
           python -m py_compile lite/main.py lite/yandex_music.py lite/ffmpeg_helper.py lite/ytdlp_worker.py lite/build.py
+
+  android:
+    name: Android build check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile Android app
+        working-directory: android
+        run: gradle assembleDebug --no-daemon --stacktrace

@@ -23,8 +23,13 @@
 |---|---|---|
 | 🧩 **Расширение** (Chrome/Edge/Я.Браузер) | Яндекс.Музыка (FLAC + MP3), Bandcamp, SoundCloud | любая ОС с Chromium |
 | 🖥️ **Десктоп** (PySide6 + yt-dlp) | 1800+ сайтов: Я.Музыка, YouTube, SoundCloud, Bandcamp, VK, Twitch, Vimeo, RuTube… | Windows / macOS / Linux |
+| 📱 **Android** (Kotlin) | Яндекс.Музыка: треки, альбомы, плейлисты, подкасты | Android 7.0+ |
 
-**Большинству нужно расширение** — оно качает Я.Музыку прямо в браузере, без сторонних программ.
+### 📱 Приложение для Android
+
+Скачайте **`MusicDownloader-vX.Y.Z.apk`** из [Releases](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest) и установите на телефон. Можно делиться ссылкой прямо из приложения Яндекс.Музыки — она подставится сама. Подробности — [android/README.md](android/README.md).
+
+**Большинству на компьютере нужно расширение** — оно качает Я.Музыку прямо в браузере, без сторонних программ.
 
 ## ✨ Возможности
 
