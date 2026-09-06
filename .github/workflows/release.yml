@@ -117,9 +117,40 @@ jobs:
           name: lite-windows
           path: lite/dist/MusicDownloader-Lite-*.exe
 
+  android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK
+        working-directory: android
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        working-directory: android/app/build/outputs/apk/release
+        run: |
+          TAG="${GITHUB_REF_NAME:-${{ inputs.tag }}}"
+          TAG="${TAG:-dev}"
+          mv app-release.apk "MusicDownloader-$TAG.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/release/MusicDownloader-*.apk
+
   release:
     name: Publish release
-    needs: [extension, desktop, lite]
+    needs: [extension, desktop, lite, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -141,11 +172,13 @@ jobs:
             artifacts/extension-zip/*.zip
             artifacts/desktop-windows/*.exe
             artifacts/lite-windows/*.exe
+            artifacts/android-apk/*.apk
           body: |
             ## Что внутри
 
             - **`music-downloader-extension-*.zip`** — расширение для Chromium-браузеров (Edge / Chrome / Яндекс.Браузер). Распакуй → `chrome://extensions` → «Режим разработчика» → «Загрузить распакованное» → выбери папку.
             - **`MusicDownloader-*.exe`** — десктоп для Windows 10/11. 1800+ сайтов (YouTube, SoundCloud, VK…). Просто запусти. Для конвертации нужен `ffmpeg.exe` рядом ([взять тут](https://github.com/yt-dlp/FFmpeg-Builds/releases)).
+            - **`MusicDownloader-*.apk`** — приложение для **Android** (7.0 и новее). Скачайте и установите, разрешив установку из этого источника.
             - **`MusicDownloader-Lite-*.exe`** — версия для **Windows 7** (там основной десктоп не запускается). Яндекс.Музыка (FLAC / MP3 + обложка + теги + текст) + YouTube/SoundCloud/Bandcamp/VK через yt-dlp.
 
             ---
