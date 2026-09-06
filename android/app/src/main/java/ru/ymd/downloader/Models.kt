@@ -23,8 +23,16 @@ data class Track(
         return if (a.isNotEmpty()) "$a - $t" else t
     }
 
-    private fun sanitize(s: String): String =
-        s.replace(Regex("[<>:\"/\\|?*\x00-\x1f]"), "_").trim().take(120)
+    /** Меняем на подчёркивание всё, что нельзя использовать в имени файла. */
+    private fun sanitize(s: String): String {
+        val forbidden = "<>:\"/\\|?*"
+        val cleaned = buildString {
+            for (ch in s) {
+                append(if (ch.code < 0x20 || forbidden.contains(ch)) '_' else ch)
+            }
+        }
+        return cleaned.trim().take(120)
+    }
 }
 
 /** Что вернул API для скачивания: ссылка, кодек и (для FLAC) ключ расшифровки. */
