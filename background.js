@@ -159,9 +159,19 @@ async function fetchWithTimeout(url, opts, ms) {
 }
 
 async function downloadAndTag(opts) {
-  const r = await fetchWithTimeout(opts.url, { credentials: 'omit' }, 120000);
-  if (!r.ok) throw new Error(`fetch audio ${r.status}`);
+  // redirect: 'follow' — Яндекс отвечает 308 на часть треков и уводит на
+  // другой CDN-узел. Без этого файл сохранялся пустым (см. обсуждение #51).
+  const r = await fetchWithTimeout(opts.url, { credentials: 'omit', redirect: 'follow' }, 120000);
+  if (!r.ok) throw new Error(`Сервер ответил ${r.status} при скачивании аудио`);
   let bytes = new Uint8Array(await r.arrayBuffer());
+
+  // Лучше честная ошибка, чем молча сохранённый пустой файл
+  if (bytes.length < 1024) {
+    throw new Error(
+      `Аудио скачалось пустым (${bytes.length} байт). Обычно это значит, что ` +
+      `ссылка устарела — обновите страницу и попробуйте снова.`
+    );
+  }
 
   // Расшифровка AES-CTR (V2 path Я.Музыки)
   if (opts.key) {

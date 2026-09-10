@@ -24,6 +24,11 @@ android {
             storePassword = "ymdrelease"
             keyAlias = "ymd"
             keyPassword = "ymdrelease"
+            // Включаем все схемы: v2/v3 нужны новым версиям Android, а v1 (JAR)
+            // всё ещё ожидают некоторые прошивки и сторонние установщики
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 

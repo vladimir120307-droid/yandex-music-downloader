@@ -38,6 +38,15 @@ class Downloader(private val context: Context) {
         val source = YandexMusic.getAudioSource(track, quality, token)
 
         var bytes = Http.getBytes(source.url, onBytes)
+
+        // Лучше честная ошибка, чем молча сохранённый пустой файл (обсуждение #51)
+        if (bytes.size < 1024) {
+            throw Exception(
+                "Аудио скачалось пустым (${bytes.size} байт). Обычно это значит, " +
+                        "что ссылка устарела — попробуйте ещё раз."
+            )
+        }
+
         if (source.encryptionKey != null) {
             bytes = Crypto.decryptAesCtr(bytes, source.encryptionKey)
         }

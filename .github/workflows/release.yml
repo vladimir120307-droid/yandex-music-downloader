@@ -171,6 +171,18 @@ jobs:
       - name: List artifacts
         run: ls -la artifacts/**/*
 
+      # Контрольные суммы, чтобы можно было проверить подлинность файлов
+      - name: Compute checksums
+        id: sums
+        run: |
+          cd artifacts
+          echo "text<<CHECKSUMS_EOF" >> "$GITHUB_OUTPUT"
+          find . -type f -regex ".*\.\(apk\|exe\|zip\)" -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            | sed "s|\./[^/]*/||" >> "$GITHUB_OUTPUT"
+          echo "CHECKSUMS_EOF" >> "$GITHUB_OUTPUT"
+
       - name: Create / update release
         uses: softprops/action-gh-release@v3
         with:
@@ -191,5 +203,18 @@ jobs:
             - **`MusicDownloader-Lite-*.exe`** — версия для **Windows 7** (там основной десктоп не запускается). Яндекс.Музыка (FLAC / MP3 + обложка + теги + текст) + YouTube/SoundCloud/Bandcamp/VK через yt-dlp.
 
             ---
+
+            <details>
+            <summary>Контрольные суммы SHA-256</summary>
+
+            ```
+            ${{ steps.sums.outputs.text }}
+            ```
+
+            Проверить в Windows: `certutil -hashfile ИМЯ_ФАЙЛА SHA256`
+
+            </details>
+
+            > **Про предупреждения браузера и антивируса.** Windows SmartScreen и Play Защита могут сообщить о «неизвестном разработчике» или пометить файл подозрительным. Так происходит со всеми программами, которые распространяются вне магазинов приложений и не подписаны платным сертификатом разработчика. Весь исходный код открыт, сборка выполняется автоматически из этого репозитория, а суммы выше позволяют убедиться, что файл не подменён.
 
             См. [README](https://github.com/${{ github.repository }}#readme) для подробностей.

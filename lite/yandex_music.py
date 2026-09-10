@@ -47,6 +47,26 @@ _HOST_DOMAINS = (
 _YM_RE = re.compile(r'^https?://music\.yandex\.\w+/', re.I)
 
 
+
+class _Redirect308Handler(urllib.request.HTTPRedirectHandler):
+    """Поддержка редиректа 308.
+
+    Яндекс отвечает 308 на часть треков и уводит на другой CDN-узел, а urllib
+    научился обрабатывать этот код только в Python 3.11. На более старых версиях
+    (в том числе 3.8, на котором собирается сборка для Windows 7) скачивание
+    падало с ошибкой 308 — см. обсуждение #51.
+    """
+
+    def http_error_308(self, req, fp, code, msg, headers):
+        return self.http_error_307(req, fp, code, msg, headers)
+
+    https_error_308 = http_error_308
+
+
+# Ставим обработчик глобально, чтобы он действовал на все запросы модуля
+urllib.request.install_opener(urllib.request.build_opener(_Redirect308Handler))
+
+
 class YMCancelled(Exception):
     pass
 
@@ -675,6 +695,18 @@ def _download_one(track: dict, out_dir: Path, token: str,
                     downloaded += len(chunk)
                     progress_cb({'status': 'downloading',
                                  'downloaded_bytes': downloaded, 'total_bytes': total})
+    # Лучше честная ошибка, чем молча сохранённый пустой файл (обсуждение #51)
+    if out_path.stat().st_size < 1024:
+        size = out_path.stat().st_size
+        try:
+            out_path.unlink()
+        except OSError:
+            pass
+        raise RuntimeError(
+            f'Аудио скачалось пустым ({size} байт). Обычно это значит, что ссылка '
+            f'устарела — попробуйте ещё раз.'
+        )
+
     # Определяем реальный контейнер по магическим байтам (codec из API ненадёжен:
     # Яндекс зовёт flac-mp4 «flac», но это MP4, не нативный FLAC).
     container = _detect_container(out_path)
