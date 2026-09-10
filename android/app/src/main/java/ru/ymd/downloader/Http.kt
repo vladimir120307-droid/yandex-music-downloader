@@ -47,9 +47,29 @@ object Http {
         } finally { c.disconnect() }
     }
 
-    /** Скачивание в память с прогрессом (нужно для расшифровки и тегов). */
+    /**
+     * Скачивание в память с прогрессом (нужно для расшифровки и тегов).
+     *
+     * Редиректы проходим вручную: HttpURLConnection не следует за ними при
+     * смене протокола, а Яндекс отвечает 308 на часть треков и уводит на другой
+     * CDN-узел — без этого файл сохранялся пустым (см. обсуждение #51).
+     */
     fun getBytes(url: String, onProgress: ((Long, Long) -> Unit)? = null): ByteArray {
-        val c = open(url, null)
+        var current = url
+        var hops = 0
+        while (true) {
+            val probe = open(current, null)
+            probe.instanceFollowRedirects = false
+            val code = probe.responseCode
+            if (code !in 300..399) { probe.disconnect(); break }
+            val location = probe.getHeaderField("Location")
+            probe.disconnect()
+            if (location.isNullOrBlank()) break
+            current = java.net.URL(java.net.URL(current), location).toString()
+            if (++hops > 5) throw Exception("Слишком много перенаправлений при скачивании")
+        }
+
+        val c = open(current, null)
         try {
             val code = c.responseCode
             if (code !in 200..299) throw HttpError(code, "")
