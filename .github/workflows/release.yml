@@ -41,7 +41,7 @@ jobs:
           echo "out=out/${OUT}" >> "$GITHUB_OUTPUT"
           echo "name=${OUT}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: extension-zip
           path: ${{ steps.zip.outputs.out }}
@@ -76,7 +76,7 @@ jobs:
           if (-not $tag) { $tag = "dev" }
           Rename-Item -Path "MusicDownloader.exe" -NewName "MusicDownloader-$tag.exe"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: desktop-windows
           path: desktop/dist/MusicDownloader-*.exe
@@ -112,7 +112,7 @@ jobs:
           if (-not $tag) { $tag = "dev" }
           Rename-Item -Path "MusicDownloader-Lite.exe" -NewName "MusicDownloader-Lite-$tag.exe"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lite-windows
           path: lite/dist/MusicDownloader-Lite-*.exe
@@ -152,7 +152,7 @@ jobs:
           echo "apksigner: $APKSIGNER"
           "$APKSIGNER" verify --verbose MusicDownloader-*.apk
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: android-apk
           path: android/app/build/outputs/apk/release/MusicDownloader-*.apk
