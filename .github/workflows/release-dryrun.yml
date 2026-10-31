@@ -1,0 +1,181 @@
+name: Release dry-run
+
+on:
+  push:
+    branches: [deps/oct-2026]
+
+permissions:
+  contents: write
+
+jobs:
+  extension:
+    name: Build extension .zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate manifest.json
+        run: python -c "import json; json.load(open('manifest.json'))"
+
+      - name: Build zip
+        id: zip
+        run: |
+          set -e
+          VERSION="dryrun"
+          OUT="music-downloader-extension-${VERSION}.zip"
+          mkdir -p out
+          zip -r "out/${OUT}" \
+            manifest.json \
+            background.js \
+            content.js content.css \
+            popup.html popup.js popup.css \
+            offscreen.html offscreen.js \
+            lib services inject icons \
+            README.md
+          echo "out=out/${OUT}" >> "$GITHUB_OUTPUT"
+          echo "name=${OUT}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: extension-zip
+          path: ${{ steps.zip.outputs.out }}
+
+  desktop:
+    name: Build desktop .exe (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+
+      - name: Build .exe
+        working-directory: desktop
+        run: python build.py
+
+      - name: Rename binary
+        working-directory: desktop/dist
+        shell: pwsh
+        run: |
+          $tag = "dryrun"
+          if (-not $tag) { $tag = "${{ inputs.tag }}" }
+          if (-not $tag) { $tag = "dev" }
+          Rename-Item -Path "MusicDownloader.exe" -NewName "MusicDownloader-$tag.exe"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-windows
+          path: desktop/dist/MusicDownloader-*.exe
+
+  lite:
+    name: Build Lite .exe (Windows 7)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Python 3.8 — последний с поддержкой Windows 7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.8'
+
+      - name: Install dependencies
+        working-directory: lite
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+
+      - name: Build .exe
+        working-directory: lite
+        run: python build.py
+
+      - name: Rename binary
+        working-directory: lite/dist
+        shell: pwsh
+        run: |
+          $tag = "dryrun"
+          if (-not $tag) { $tag = "${{ inputs.tag }}" }
+          if (-not $tag) { $tag = "dev" }
+          Rename-Item -Path "MusicDownloader-Lite.exe" -NewName "MusicDownloader-Lite-$tag.exe"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lite-windows
+          path: lite/dist/MusicDownloader-Lite-*.exe
+
+  android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Build APK
+        working-directory: android
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        working-directory: android/app/build/outputs/apk/release
+        run: |
+          TAG="dryrun"
+          TAG="${TAG:-dev}"
+          mv app-release.apk "MusicDownloader-$TAG.apk"
+
+      # Без подписи Android откажется устанавливать пакет, а сборка при этом
+      # проходит без ошибок — поэтому проверяем явно.
+      - name: Verify APK signature
+        working-directory: android/app/build/outputs/apk/release
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          echo "apksigner: $APKSIGNER"
+          "$APKSIGNER" verify --verbose MusicDownloader-*.apk
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/release/MusicDownloader-*.apk
+
+  release:
+    name: Publish release
+    needs: [extension, desktop, lite, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -la artifacts/**/*
+
+      # Контрольные суммы, чтобы можно было проверить подлинность файлов
+      - name: Compute checksums
+        id: sums
+        run: |
+          cd artifacts
+          echo "text<<CHECKSUMS_EOF" >> "$GITHUB_OUTPUT"
+          find . -type f -regex ".*\.\(apk\|exe\|zip\)" -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            | sed "s|\./[^/]*/||" >> "$GITHUB_OUTPUT"
+          echo "CHECKSUMS_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Show checksums
+        run: echo "${{ steps.sums.outputs.text }}"
