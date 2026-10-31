@@ -171,18 +171,6 @@
     return data.result !== undefined ? data.result : data;
   }
 
-  async function apiPost(path, body, token) {
-    const headers = authHeaders(token);
-    headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    const resp = await fetch(API_BASE + path, { method: 'POST', headers, body });
-    if (!resp.ok) {
-      const txt = await resp.text().catch(() => '');
-      throw new Error(`api.music.yandex.net${path}: HTTP ${resp.status} ${txt.slice(0, 200)}`);
-    }
-    const data = await resp.json();
-    return data.result !== undefined ? data.result : data;
-  }
-
   function shapeTrack(t, defaultAlbumId) {
     const album = (t.albums || [])[0] || {};
     const pos = album.trackPosition || {};
@@ -229,7 +217,9 @@
   }
 
   async function fetchSingleTrack(trackId, albumId, token) {
-    const list = await apiPost('/tracks', 'track-ids=' + encodeURIComponent(trackId), token);
+    // Только GET: POST из расширения несёт Origin: chrome-extension://…,
+    // и Яндекс отвечает на такие запросы 403 (обсуждение #62).
+    const list = await apiGet(`/tracks/${encodeURIComponent(trackId)}`, token);
     const t = (list || [])[0];
     if (t) return shapeTrack(t, albumId);
     return { trackId: String(trackId), albumId: albumId || '', title: '', artist: '' };
