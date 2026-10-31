@@ -91,40 +91,57 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // ═══════════════════════════════════════
 
 function chromeDownload(url, filename, saveAs) {
-  return new Promise((resolve) => {
+  return startDownload(url, filename, saveAs)
+    .then(downloadId => ({ success: true, downloadId }))
+    .catch(e => ({ success: false, error: e.message }));
+}
+
+// ═══ ИМЯ ФАЙЛА ═══
+// Слушатель onDeterminingFilename — страховка для сборок вроде Я.Браузера,
+// которые игнорируют filename у data:/blob: загрузок (issue #47).
+//
+// Важно: свои загрузки он обязан называть ЯВНО. data: URL стартует мгновенно,
+// и Chrome начинает выбирать имя раньше, чем к нему доходит filename из
+// chrome.downloads.download. Если в этот момент ответить suggest() без имени,
+// Chrome сохраняет файл как «Без названия» (обсуждение #12).
+const expectedNames = new Map();  // url -> filename
+
+function rememberName(url, name) {
+  if (!url || !name) return;
+  expectedNames.set(url, name);
+  // Если событие так и не пришло (загрузка отклонена), не копим записи вечно
+  while (expectedNames.size > 30) expectedNames.delete(expectedNames.keys().next().value);
+}
+
+function takeExpectedName(url) {
+  if (!url || !expectedNames.has(url)) return '';
+  const name = expectedNames.get(url);
+  expectedNames.delete(url);
+  return name;
+}
+
+// Все загрузки расширения идут через эту функцию — иначе слушатель ниже
+// не узнает их имя.
+function startDownload(url, filename, saveAs) {
+  rememberName(url, filename);
+  return new Promise((resolve, reject) => {
     chrome.downloads.download({ url, filename, saveAs: !!saveAs }, (downloadId) => {
-      if (chrome.runtime.lastError) resolve({ success: false, error: chrome.runtime.lastError.message });
-      else resolve({ success: true, downloadId });
+      if (chrome.runtime.lastError) {
+        expectedNames.delete(url);
+        reject(new Error(chrome.runtime.lastError.message));
+      } else resolve(downloadId);
     });
   });
 }
 
-// ═══ СТРАХОВКА ИМЕНИ ФАЙЛА (issue #47) ═══
-// Некоторые Chromium-сборки (напр. Яндекс.Браузер) игнорируют filename при
-// скачивании blob:/data: URL и сохраняют файл как «Загруженное» без расширения.
-// Перехватываем определение имени и подставляем своё.
-const expectedNames = [];
-
-function pushExpectedName(name) {
-  if (!name) return;
-  expectedNames.push(name);
-  if (expectedNames.length > 30) expectedNames.shift();
-}
-
 try {
   chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
-    // Трогаем только свои загрузки
+    // Чужие загрузки не трогаем. byExtensionId может быть ещё не заполнен
+    // (та же гонка), поэтому свои узнаём по URL.
     if (item.byExtensionId && item.byExtensionId !== chrome.runtime.id) { suggest(); return; }
-    const cur = item.filename || '';
-    const hasExt = /\.[a-z0-9]{2,5}$/i.test(cur);
-    if (!hasExt && expectedNames.length) {
-      const name = expectedNames.shift();
-      console.log('[YMD] filename fallback:', cur || '(пусто)', '->', name);
-      suggest({ filename: name });
-      return;
-    }
-    if (expectedNames.length) expectedNames.shift();
-    suggest();
+    const name = takeExpectedName(item.url) || takeExpectedName(item.finalUrl);
+    if (name) suggest({ filename: name });
+    else suggest();
   });
 } catch (e) {
   console.warn('[YMD] onDeterminingFilename недоступен:', e && e.message);
@@ -273,15 +290,9 @@ async function downloadAndTag(opts) {
   // ПУТЬ 1 (основной): data: URL. Здесь filename применяется надёжно во всех
   // Chromium-браузерах. Blob-URL из offscreen некоторые сборки (Я.Браузер)
   // сохраняют как «Загруженное» без расширения — см. issue #47.
-  pushExpectedName(opts.filename);
   try {
     const dataUrl = `data:${mime};base64,${bytesToBase64(bytes)}`;
-    const id = await new Promise((resolve, reject) => {
-      chrome.downloads.download({ url: dataUrl, filename: opts.filename, saveAs: !!opts.saveAs }, (downloadId) => {
-        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-        else resolve(downloadId);
-      });
-    });
+    const id = await startDownload(dataUrl, opts.filename, opts.saveAs);
     debug.via = 'data-url';
     return { ok: true, downloadId: id, size: bytes.length, debug };
   } catch (e) {
@@ -293,12 +304,7 @@ async function downloadAndTag(opts) {
   // большой для data: URL.
   const blobId = 'ymd-' + (++blobCounter);
   const url = await makeBlobUrlViaOffscreen(blobId, bytes, mime);
-  const id = await new Promise((resolve, reject) => {
-    chrome.downloads.download({ url, filename: opts.filename, saveAs: !!opts.saveAs }, (downloadId) => {
-      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-      else resolve(downloadId);
-    });
-  });
+  const id = await startDownload(url, opts.filename, opts.saveAs);
   revokeBlobUrlLater(blobId, id);
   debug.via = 'offscreen-blob';
   return { ok: true, downloadId: id, size: bytes.length, debug };
@@ -529,16 +535,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const filename = message.filename || 'track.mp3';
     chrome.storage.local.get('saveAs', (data) => {
       const saveAs = !!data.saveAs;
-      chrome.downloads.download({ url, filename, saveAs }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          if (saveAs) {
-            chrome.downloads.download({ url, saveAs: true }, (id2) => {
-              if (chrome.runtime.lastError) sendResponse({ success: false, error: chrome.runtime.lastError.message });
-              else sendResponse({ success: true, downloadId: id2 });
-            });
-          } else sendResponse({ success: false, error: chrome.runtime.lastError.message });
-        } else sendResponse({ success: true, downloadId });
-      });
+      startDownload(url, filename, saveAs).then(
+        (downloadId) => sendResponse({ success: true, downloadId }),
+        (e) => {
+          if (!saveAs) { sendResponse({ success: false, error: e.message }); return; }
+          chrome.downloads.download({ url, saveAs: true }, (id2) => {
+            if (chrome.runtime.lastError) sendResponse({ success: false, error: chrome.runtime.lastError.message });
+            else sendResponse({ success: true, downloadId: id2 });
+          });
+        });
     });
     return true;
   }
