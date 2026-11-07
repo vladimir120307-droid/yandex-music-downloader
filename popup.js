@@ -15,6 +15,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const progressFill = document.getElementById('progress-fill');
   const progressText = document.getElementById('progress-text');
 
+  // Версия и уведомление о новой
+  const update = globalThis.YMD.update;
+  document.getElementById('footer-version').textContent = 'v' + update.currentVersion();
+  const updateBanner = document.getElementById('update-banner');
+  update.getAvailable().then((u) => {
+    if (!u || u.dismissed) return;
+    document.getElementById('update-version').textContent = u.version;
+    document.getElementById('update-link').href = u.url;
+    updateBanner.style.display = 'block';
+  });
+  document.getElementById('update-dismiss').addEventListener('click', () => {
+    updateBanner.style.display = 'none';
+    update.dismiss();
+  });
+
   // ═══ Save As toggle ═══
   chrome.storage.local.get('saveAs', (data) => { saveAsToggle.checked = !!data.saveAs; });
   saveAsToggle.addEventListener('change', () => {

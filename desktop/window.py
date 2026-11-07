@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QObject, QThread, QUrl, Signal, Slot
@@ -16,9 +17,11 @@ from PySide6.QtWidgets import (
 )
 
 import ffmpeg_installer
+import update_check
 from core import DownloadWorker
 from ffmpeg_helper import find_ffmpeg, suggest_install
 from settings import Settings
+from version import VERSION
 
 
 class FfmpegInstallWorker(QObject):
@@ -53,6 +56,11 @@ QMainWindow, QWidget { background: #0d0d1a; color: #fff; }
 QLabel { color: #ccc; font-size: 12px; }
 QLabel#title { color: #ffdb4d; font-size: 18px; font-weight: 700; }
 QLabel#subtitle { color: #888; font-size: 11px; }
+QPushButton#updateBtn {
+    background: rgba(255, 219, 77, 0.1); color: #ffdb4d; font-weight: 600;
+    border: 1px solid rgba(255, 219, 77, 0.3); border-radius: 6px; padding: 6px 10px;
+}
+QPushButton#updateBtn:hover { background: rgba(255, 219, 77, 0.2); }
 QLabel.section { color: #888; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; font-weight: 600; }
 
 QLineEdit {
@@ -145,6 +153,8 @@ def humanize(bytes_):
 
 
 class MainWindow(QMainWindow):
+    update_found = Signal(dict)
+
     def __init__(self):
         super().__init__()
         self.settings = Settings()
@@ -152,7 +162,7 @@ class MainWindow(QMainWindow):
         self._next_job_id = 1
         self.ffmpeg_path = find_ffmpeg()
 
-        self.setWindowTitle('Music Downloader')
+        self.setWindowTitle('Music Downloader' if VERSION == 'dev' else f'Music Downloader {VERSION}')
         self.resize(820, 600)
         self.setStyleSheet(STYLESHEET)
         try:
@@ -165,6 +175,20 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._load_settings()
         self._refresh_status()
+
+        self.update_found.connect(self._show_update)
+        threading.Thread(target=self._check_update, daemon=True).start()
+
+    def _check_update(self):
+        info = update_check.check(VERSION, parts=4, asset_prefix='MusicDownloader-v')
+        if info:
+            self.update_found.emit(info)
+
+    @Slot(dict)
+    def _show_update(self, info: dict):
+        self.update_btn.setText(f"Вышла версия {info['version']} — скачать")
+        self.update_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(info['url'])))
+        self.update_btn.show()
 
     # ─────────────────────── UI ───────────────────────
     def _build_ui(self):
@@ -181,6 +205,11 @@ class MainWindow(QMainWindow):
         subtitle.setObjectName('subtitle')
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
+
+        self.update_btn = QPushButton()
+        self.update_btn.setObjectName('updateBtn')
+        self.update_btn.hide()
+        layout.addWidget(self.update_btn)
 
         # URL input row
         url_row = QHBoxLayout()

@@ -15,6 +15,15 @@
       <h1>Music Downloader</h1>
     </div>
 
+    <div id="update-banner" class="update-banner" style="display: none;">
+      <div class="update-row">
+        <span>Вышла версия <b id="update-version"></b></span>
+        <a id="update-link" class="update-link" target="_blank" rel="noopener">Скачать</a>
+        <button id="update-dismiss" class="update-dismiss" title="Не напоминать об этой версии">×</button>
+      </div>
+      <div class="update-hint">Распакуйте архив поверх старой папки и нажмите ↻ на карточке расширения на странице расширений браузера.</div>
+    </div>
+
     <div id="no-track" class="status-message">
       <p>Откройте <strong>Яндекс Музыку</strong> и включите трек,<br>или вставьте ссылку ниже.</p>
     </div>
@@ -128,9 +137,10 @@
       </div>
     </details>
 
-    <div class="footer">v3.2 · Я.Музыка · Bandcamp · SoundCloud</div>
+    <div class="footer"><span id="footer-version"></span> · Я.Музыка · Bandcamp · SoundCloud · <a href="https://github.com/vladimir120307-droid/yandex-music-downloader" target="_blank" rel="noopener">⭐ GitHub</a></div>
   </div>
 
+  <script src="lib/update.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

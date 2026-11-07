@@ -13,9 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Validate manifest.json
         run: node -e "JSON.parse(require('fs').readFileSync('manifest.json'))"
@@ -35,8 +35,27 @@ jobs:
       - name: Compile-check Python files
         run: |
           python -m py_compile downloader.py
-          python -m py_compile desktop/main.py desktop/window.py desktop/core.py desktop/settings.py desktop/ffmpeg_helper.py desktop/build.py desktop/yandex_music.py desktop/ffmpeg_installer.py
-          python -m py_compile lite/main.py lite/yandex_music.py lite/ffmpeg_helper.py lite/ytdlp_worker.py lite/build.py
+          python -m py_compile desktop/main.py desktop/window.py desktop/core.py desktop/settings.py desktop/ffmpeg_helper.py desktop/build.py desktop/yandex_music.py desktop/ffmpeg_installer.py desktop/update_check.py desktop/version.py
+          python -m py_compile lite/main.py lite/yandex_music.py lite/ffmpeg_helper.py lite/ytdlp_worker.py lite/build.py lite/update_check.py lite/version.py
+
+      # Эти файлы намеренно лежат копиями в desktop/ и lite/
+      - name: Shared Python files are identical
+        run: |
+          diff desktop/yandex_music.py lite/yandex_music.py
+          diff desktop/update_check.py lite/update_check.py
+
+  e2e:
+    name: Extension in Chrome
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Run tests
+        run: node tests/e2e.mjs
 
   android:
     name: Android build check

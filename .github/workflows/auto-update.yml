@@ -1,0 +1,55 @@
+name: Auto-update
+
+# yt-dlp вшит в десктопный exe, а YouTube и другие сайты меняют защиту каждые
+# несколько недель: без новой сборки программа перестаёт качать. Поэтому, как
+# только вышел новый yt-dlp, пересобираем последний релиз. Код берётся из его же
+# тега, так что вместе с yt-dlp не уедут изменения, которые ещё лежат в main.
+# Exe запускается перед публикацией (см. Smoke test в release.yml).
+
+on:
+  schedule:
+    - cron: '17 6 * * 1,4'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # В публичном репозитории GitHub выключает расписание после 60 дней без
+      # коммитов. Включаем явно, чтобы проверки не замолкали в спокойные месяцы.
+      - name: Keep schedules enabled
+        run: |
+          gh workflow enable auto-update.yml
+          gh workflow enable healthcheck.yml
+
+      - name: Rebuild if yt-dlp is newer
+        run: |
+          # PyPI пишет 2026.1.29, а сам yt-dlp — 2026.01.29
+          normalize() { sed -E 's/\.0+([0-9])/.\1/g'; }
+
+          tag=$(gh release view --json tagName --jq .tagName)
+          bundled=$(gh release view --json body --jq .body \
+            | sed -n 's/.*<!-- yt-dlp: \([0-9.]*\) -->.*/\1/p' | head -1 | normalize)
+          latest=$(curl -fsSL https://pypi.org/pypi/yt-dlp/json | jq -r .info.version | normalize)
+          echo "Релиз $tag: yt-dlp ${bundled:-неизвестен}, на PyPI: $latest"
+
+          if [ -z "$bundled" ]; then
+            echo "В описании релиза нет версии yt-dlp — он собран старым workflow, пропускаем"
+            exit 0
+          fi
+          if [ -z "$latest" ] || [ "$latest" = "null" ] || [ "$bundled" = "$latest" ]; then
+            echo "Пересборка не нужна"
+            exit 0
+          fi
+
+          IFS=. read -r major minor patch build <<< "${tag#v}"
+          next="v$major.$minor.$patch.$(( ${build:-0} + 1 ))"
+          echo "Запускаю сборку $next"
+          gh workflow run release.yml --ref "$tag" -f tag="$next"

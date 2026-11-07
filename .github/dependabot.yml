@@ -3,18 +3,29 @@ updates:
   - package-ecosystem: "pip"
     directory: "/desktop"
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 3
+      interval: "monthly"
     labels: ["dependencies", "desktop"]
     commit-message:
       prefix: "Зависимости (desktop)"
+    ignore:
+      # Обновляется сам: auto-update.yml пересобирает релиз с новой версией
+      - dependency-name: "yt-dlp"
+    # Одним PR, чтобы обновления не конфликтовали между собой
+    groups:
+      python:
+        patterns: ["*"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
-    open-pull-requests-limit: 3
     labels: ["dependencies", "ci"]
     commit-message:
       prefix: "Зависимости (actions)"
+    ignore:
+      # В v6 кэш вынесен в проприетарный компонент с отдельными условиями использования
+      - dependency-name: "gradle/actions"
+        versions: [">=6"]
+    groups:
+      actions:
+        patterns: ["*"]

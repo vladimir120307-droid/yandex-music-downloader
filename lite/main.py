@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import threading
+import traceback
 import webbrowser
 from pathlib import Path
 
@@ -22,7 +23,9 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import update_check
 import yandex_music
+from version import VERSION
 try:
     import ytdlp_worker
     HAS_YTDLP = True
@@ -105,6 +108,7 @@ class App:
         sub = ('Яндекс.Музыка (FLAC/MP3) + YouTube · SoundCloud · Bandcamp · VK · и др.'
                if HAS_YTDLP else 'Яндекс.Музыка · FLAC / MP3 · обложка · теги · текст')
         tk.Label(head, text=sub, bg=BG, fg=GREY, font=('Segoe UI', 9)).pack(anchor='w')
+        self.head = head
 
         # Токен
         self._section('Токен Яндекс.Музыки (нужен один раз):')
@@ -187,6 +191,32 @@ class App:
         else:
             self._log('ffmpeg не найден — FLAC сохранится как .m4a (тоже lossless). '
                       'Для .flac положи ffmpeg.exe рядом с программой.')
+
+    def _check_update(self):
+        info = update_check.check(VERSION, parts=3, asset_prefix='MusicDownloader-Lite-v')
+        if info:
+            self.root.after(0, lambda: self._show_update(info))
+
+    def _show_update(self, info):
+        tk.Button(self.head, text='Вышла версия {} — скачать'.format(info['version']),
+                  command=lambda: webbrowser.open(info['url']), bg=YELLOW, fg=BG, relief='flat',
+                  font=('Segoe UI', 9, 'bold'), cursor='hand2').pack(anchor='w', pady=(6, 0))
+
+    def _smoke_test(self, report_path):
+        """Проверка собранного exe перед публикацией релиза (см. release.yml)."""
+        try:
+            import mutagen  # noqa: F401
+            from Crypto.Cipher import AES
+            AES.new(bytes(16), AES.MODE_CTR, nonce=bytes(12))
+            if not HAS_YTDLP:
+                raise RuntimeError('в сборку не попал ytdlp_worker')
+            import yt_dlp
+            yt_dlp.YoutubeDL({'quiet': True})
+            result = 'ok yt-dlp=' + yt_dlp.version.__version__
+        except Exception:
+            result = traceback.format_exc()
+        Path(report_path).write_text(result, encoding='utf-8')
+        self.root.destroy()
 
     def _section(self, text):
         tk.Label(self.root, text=text, bg=BG, fg=WHITE, font=('Segoe UI', 9, 'bold'),
@@ -298,6 +328,11 @@ class App:
             self._log('  ' + (p.get('message') or 'ошибка'))
 
     def run(self):
+        # Из потока к окну можно обращаться только когда mainloop уже крутится
+        self.root.after(100, lambda: threading.Thread(target=self._check_update, daemon=True).start())
+        report_path = os.environ.get('MD_SMOKE_REPORT')
+        if report_path:
+            self.root.after(1500, lambda: self._smoke_test(report_path))
         self.root.mainloop()
 
 

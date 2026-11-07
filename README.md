@@ -7,6 +7,7 @@
 [![Release](https://img.shields.io/github/v/release/vladimir120307-droid/yandex-music-downloader?color=ffdb4d&label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F&style=flat-square)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/vladimir120307-droid/yandex-music-downloader/total?style=flat-square&color=4caf50&label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D0%BD%D0%BE)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases)
 [![Stars](https://img.shields.io/github/stars/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=f0c000&label=%D0%B7%D0%B2%D1%91%D0%B7%D0%B4%D1%8B)](https://github.com/vladimir120307-droid/yandex-music-downloader/stargazers)
+[![Проверка API](https://img.shields.io/github/actions/workflow/status/vladimir120307-droid/yandex-music-downloader/healthcheck.yml?style=flat-square&label=%D0%BF%D1%80%D0%BE%D0%B2%D0%B5%D1%80%D0%BA%D0%B0%20API)](https://github.com/vladimir120307-droid/yandex-music-downloader/actions/workflows/healthcheck.yml)
 [![License](https://img.shields.io/github/license/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=888&label=%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F)](LICENSE)
 
 Бесплатно · Open source · Без рекламы · Русский интерфейс
@@ -17,7 +18,7 @@
 
 ## Что это
 
-Две программы в одном репозитории:
+Один проект для браузера, компьютера и телефона:
 
 | | Что качает | Платформа |
 |---|---|---|
@@ -42,6 +43,7 @@
 - 📁 **Альбомы и плейлисты** целиком — кнопкой на странице или по ссылке
 - 🔗 **Скачивание по ссылке** из попапа — вставил ссылку, получил файлы
 - 🟡 **Кнопка на каждом треке** + перетаскиваемая плавающая кнопка
+- 🔔 **Сообщает о новых версиях** — [подробнее](#-обновления)
 
 ---
 
@@ -56,6 +58,18 @@
 7. Открой любой трек/альбом — расширение **само поймает токен**, появится жёлтая кнопка скачивания
 
 > 💡 В попапе расширения (клик по иконке) можно выбрать качество (FLAC / MP3 320), включить текст песни и вставить ссылку для скачивания.
+
+---
+
+## 🔄 Обновления
+
+Все версии сами сообщают, когда вышла новая: на значке расширения появится **NEW**, а в программах и приложении — жёлтая кнопка со ссылкой на файл.
+
+**Как обновить расширение:** скачай новый zip, распакуй **поверх старой папки** и нажми круглую стрелку на карточке расширения в `chrome://extensions`. Токен и настройки сохранятся. Android-приложение ставится поверх старого (если стояла версия 3.12.0 или раньше, её сначала нужно удалить).
+
+Для проверки используется обычный запрос к GitHub за номером последней версии: расширение делает его раз в сутки, программы и приложение — при запуске. Токен, ссылки и история скачиваний при этом никуда не передаются.
+
+Десктоп пересобирается автоматически, как только выходит новый yt-dlp. Такие версии с четвёртым числом в номере (например, `v3.14.0.1`) нужны только десктопу, остальным обновляться не надо. Кроме того, раз в день автоматическая проверка смотрит, не сломал ли Яндекс API, и её результат виден на значке вверху этой страницы.
 
 ---
 
@@ -143,6 +157,7 @@ lib/
   id3.js                # ID3v2 writer (теги + обложка + текст для MP3)
   flacremux.js          # FLAC-в-MP4 → нативный .flac + VorbisComment + Picture
   mp4cover.js           # MP4 covr atom (теги + обложка для .m4a)
+  update.js             # Проверка новой версии на GitHub
 services/
   yandex.js             # Яндекс.Музыка (api.music.yandex.net + V2 FLAC)
   bandcamp.js           # Bandcamp (data-tralbum)
