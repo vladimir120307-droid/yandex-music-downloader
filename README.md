@@ -7,7 +7,7 @@
 [![Release](https://img.shields.io/github/v/release/vladimir120307-droid/yandex-music-downloader?color=ffdb4d&label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F&style=flat-square)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/vladimir120307-droid/yandex-music-downloader/total?style=flat-square&color=4caf50&label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D0%BD%D0%BE)](https://github.com/vladimir120307-droid/yandex-music-downloader/releases)
 [![Stars](https://img.shields.io/github/stars/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=f0c000&label=%D0%B7%D0%B2%D1%91%D0%B7%D0%B4%D1%8B)](https://github.com/vladimir120307-droid/yandex-music-downloader/stargazers)
-[![Проверка API](https://img.shields.io/github/actions/workflow/status/vladimir120307-droid/yandex-music-downloader/healthcheck.yml?style=flat-square&label=%D0%BF%D1%80%D0%BE%D0%B2%D0%B5%D1%80%D0%BA%D0%B0%20API)](https://github.com/vladimir120307-droid/yandex-music-downloader/actions/workflows/healthcheck.yml)
+[![Тесты](https://img.shields.io/github/actions/workflow/status/vladimir120307-droid/yandex-music-downloader/ci.yml?branch=main&style=flat-square&label=%D1%82%D0%B5%D1%81%D1%82%D1%8B)](https://github.com/vladimir120307-droid/yandex-music-downloader/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/vladimir120307-droid/yandex-music-downloader?style=flat-square&color=888&label=%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F)](LICENSE)
 
 Бесплатно · Open source · Без рекламы · Русский интерфейс
@@ -69,7 +69,9 @@
 
 Для проверки используется обычный запрос к GitHub за номером последней версии: расширение делает его раз в сутки, программы и приложение — при запуске. Токен, ссылки и история скачиваний при этом никуда не передаются.
 
-Десктоп пересобирается автоматически, как только выходит новый yt-dlp. Такие версии с четвёртым числом в номере (например, `v3.14.0.1`) нужны только десктопу, остальным обновляться не надо. Кроме того, раз в день автоматическая проверка смотрит, не сломал ли Яндекс API, и её результат виден на значке вверху этой страницы.
+Десктоп пересобирается автоматически, как только выходит новый yt-dlp. Такие версии с четвёртым числом в номере (например, `v3.14.0.1`) нужны только десктопу, остальным обновляться не надо.
+
+Если скачивание сорвалось, в попапе расширения появится ссылка **«Сообщить об ошибке»**: форма откроется уже заполненной версией, браузером и текстом ошибки, отправляете её вы сами.
 
 ---
 

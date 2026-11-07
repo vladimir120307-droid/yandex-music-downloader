@@ -20,6 +20,8 @@ body:
         - Расширение (браузер)
         - Десктопная программа (.exe)
         - Десктоп из исходников (python main.py)
+        - Версия для Windows 7 (Lite)
+        - Приложение для Android
         - Не уверен
     validations:
       required: true
@@ -28,8 +30,8 @@ body:
     id: version
     attributes:
       label: Версия
-      description: «v3.1.0» или название коммита. Видно в footer попапа или внизу окна десктопа.
-      placeholder: v3.1.0
+      description: Видно внизу попапа расширения, в заголовке окна программы и внизу экрана приложения.
+      placeholder: v3.14.0
 
   - type: input
     id: env

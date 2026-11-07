@@ -64,6 +64,7 @@ body {
 
 .status.success { background: rgba(76, 175, 80, 0.1); color: #4caf50; border: 1px solid rgba(76, 175, 80, 0.2); }
 .status.error { background: rgba(244, 67, 54, 0.1); color: #f44336; border: 1px solid rgba(244, 67, 54, 0.2); }
+.status-report { display: inline-block; margin-top: 4px; color: #ffdb4d; }
 .status.info { background: rgba(255, 219, 77, 0.08); color: #ffdb4d; border: 1px solid rgba(255, 219, 77, 0.15); }
 
 .paste-section {

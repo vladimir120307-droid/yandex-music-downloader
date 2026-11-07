@@ -2,8 +2,9 @@
 // (обсуждение #12) и 403 на треке по ссылке (#62) доходили до людей незамеченными.
 //
 //   node tests/e2e.mjs          — всё
-//   node tests/e2e.mjs local    — только то, что не ходит к Яндексу и GitHub
-//   node tests/e2e.mjs api      — только запросы к живому API (его же гоняет healthcheck.yml)
+//   node tests/e2e.mjs ci       — без запросов к Яндексу (так запускается в GitHub Actions:
+//                                 зарубежным IP раннеров Яндекс отвечает 451)
+//   node tests/e2e.mjs yandex   — только запросы к живому API, нужен российский IP
 //
 // Обычный Chrome с версии 137 не принимает --load-extension, поэтому расширение
 // загружается через CDP (Extensions.loadUnpacked) в чистый временный профиль.
@@ -108,7 +109,8 @@ class Browser {
     if (!fs.existsSync(this.downloads)) return [];
     return fs.readdirSync(this.downloads, { recursive: true })
       .filter((f) => fs.statSync(path.join(this.downloads, f)).isFile())
-      .filter((f) => !/\.(crdownload|tmp)$/.test(f))
+      // Незавершённые загрузки: .crdownload, а на Linux ещё .com.google.Chrome.XXXXXX
+      .filter((f) => !/\.(crdownload|tmp)$/.test(f) && !path.basename(f).startsWith('.'))
       .map((f) => f.split(path.sep).join('/'))
       .sort();
   }
@@ -141,7 +143,7 @@ function assertEqual(actual, expected, what) {
   if (a !== e) throw new Error(`${what}: ожидалось ${e}, получено ${a}`);
 }
 
-const LOCAL_TESTS = {
+const CI_TESTS = {
   async 'один трек сохраняется под своим именем (#12)'(b) {
     await b.eval(`downloadAndTag({ url: (${FAKE_MP3})(0), codec: 'mp3', filename: 'Артист - Песня.mp3', title: 'Песня', artist: 'Артист' })`);
     assertEqual(await b.waitForFiles(1), ['Артист - Песня.mp3'], 'файлы');
@@ -206,9 +208,35 @@ const LOCAL_TESTS = {
     await setUpdate('99.1.3');
     assertEqual(await badge(), 'NEW', 'значок для следующей версии');
   },
+
+  async 'ошибка скачивания предлагает сообщить о ней, с уже заполненной формой'(b) {
+    const { sessionId } = await b.openPopup();
+    const report = () => b.eval(`document.getElementById('status').querySelector('a')?.href || ''`, sessionId);
+    // Ответ background подменяем: важно, что покажет попап
+    await b.eval(`chrome.runtime.sendMessage = (m, cb) => {
+      if (m.action === 'pasteDownload') cb({ success: false, error: 'api.music.yandex.net/tracks: HTTP 403' }); };
+      document.getElementById('url-input').value = 'https://music.yandex.ru/track/1';
+      document.getElementById('paste-btn').click(); true`, sessionId);
+    const url = new URL(await report());
+    assertEqual(url.pathname, '/vladimir120307-droid/yandex-music-downloader/issues/new', 'адрес формы');
+    assertEqual(url.searchParams.get('version'), 'v' + MANIFEST.version, 'версия в форме');
+    assertEqual(url.searchParams.get('console'), 'api.music.yandex.net/tracks: HTTP 403', 'ошибка в форме');
+
+    // «Вставьте ссылку» — не поломка, сообщать не о чем
+    await b.eval(`document.getElementById('url-input').value = ''; document.getElementById('paste-btn').click(); true`, sessionId);
+    assertEqual(await report(), '', 'ссылка при пустом поле');
+  },
+
+  async 'GitHub отдаёт данные для проверки обновлений'(b) {
+    const u = await b.eval(`YMD.update.check(true).then(() => chrome.storage.local.get('ymdUpdate')).then((d) => d.ymdUpdate)`);
+    // Лимит анонимных запросов к GitHub на общих IP раннеров быстро кончается: это не поломка
+    if (!u.version) return 'пропущено: GitHub не ответил (лимит запросов)';
+    if (!/^\d+\.\d+\.\d+$/.test(u.version)) throw new Error('странная версия: ' + u.version);
+    if (!/^https:\/\/github\.com\/.+\.zip$/.test(u.url)) throw new Error('странная ссылка: ' + u.url);
+  },
 };
 
-const API_TESTS = {
+const YANDEX_TESTS = {
   async 'трек по ссылке /album/X/track/Y (#62)'(b) {
     const n = await b.eval(`(async () => { const s = YMD.registry.get('yandex');
       const t = await s.listTracks(s.parseUrl('https://music.yandex.ru/album/${ALBUM_ID}/track/${TRACK_ID}'));
@@ -240,18 +268,10 @@ const API_TESTS = {
     })()`);
     assertEqual(fields, ['bitrateInKbps', 'codec', 'downloadInfoUrl'], 'поля');
   },
-
-  async 'GitHub отдаёт данные для проверки обновлений'(b) {
-    const u = await b.eval(`YMD.update.check(true).then(() => chrome.storage.local.get('ymdUpdate')).then((d) => d.ymdUpdate)`);
-    // Лимит анонимных запросов к GitHub на общих IP раннеров быстро кончается: это не поломка
-    if (!u.version) return 'пропущено: GitHub не ответил (лимит запросов)';
-    if (!/^\d+\.\d+\.\d+$/.test(u.version)) throw new Error('странная версия: ' + u.version);
-    if (!/^https:\/\/github\.com\/.+\.zip$/.test(u.url)) throw new Error('странная ссылка: ' + u.url);
-  },
 };
 
 async function run() {
-  const tests = { ...(GROUP !== 'api' ? LOCAL_TESTS : {}), ...(GROUP !== 'local' ? API_TESTS : {}) };
+  const tests = { ...(GROUP !== 'yandex' ? CI_TESTS : {}), ...(GROUP !== 'ci' ? YANDEX_TESTS : {}) };
   let failed = 0;
   for (const [name, fn] of Object.entries(tests)) {
     // Свой браузер на каждый тест: папка загрузок и хранилище не должны пересекаться

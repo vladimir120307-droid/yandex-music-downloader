@@ -23,11 +23,9 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       # В публичном репозитории GitHub выключает расписание после 60 дней без
-      # коммитов. Включаем явно, чтобы проверки не замолкали в спокойные месяцы.
-      - name: Keep schedules enabled
-        run: |
-          gh workflow enable auto-update.yml
-          gh workflow enable healthcheck.yml
+      # коммитов. Включаем явно, чтобы пересборка не замолкала в спокойные месяцы.
+      - name: Keep schedule enabled
+        run: gh workflow enable auto-update.yml
 
       - name: Rebuild if yt-dlp is newer
         run: |
