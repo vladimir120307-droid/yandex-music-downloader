@@ -15,6 +15,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const progressFill = document.getElementById('progress-fill');
   const progressText = document.getElementById('progress-text');
 
+  // Версия и уведомление о новой
+  const update = globalThis.YMD.update;
+  document.getElementById('footer-version').textContent = 'v' + update.currentVersion();
+  const updateBanner = document.getElementById('update-banner');
+  update.getAvailable().then((u) => {
+    if (!u || u.dismissed) return;
+    document.getElementById('update-version').textContent = u.version;
+    document.getElementById('update-link').href = u.url;
+    updateBanner.style.display = 'block';
+  });
+  document.getElementById('update-dismiss').addEventListener('click', () => {
+    updateBanner.style.display = 'none';
+    update.dismiss();
+  });
+
   // ═══ Save As toggle ═══
   chrome.storage.local.get('saveAs', (data) => { saveAsToggle.checked = !!data.saveAs; });
   saveAsToggle.addEventListener('change', () => {
@@ -71,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
       downloadBtn.classList.remove('loading');
       if (chrome.runtime.lastError) { showStatus('Перезагрузите страницу (F5)', 'error'); return; }
       if (resp?.success) showStatus('✓ ' + (resp.filename || 'Скачивание начато'), 'success');
-      else showStatus(resp?.error || 'Ошибка скачивания', 'error');
+      else showDownloadError(resp?.error);
     });
   });
 
@@ -112,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
       pasteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:-2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Скачать';
       if (chrome.runtime.lastError) { showStatus('Ошибка: ' + chrome.runtime.lastError.message, 'error'); return; }
       if (resp?.success) showStatus(`✓ Скачано ${resp.downloaded}/${resp.total}`, 'success');
-      else showStatus(resp?.error || 'Ошибка скачивания', 'error');
+      else showDownloadError(resp?.error);
     });
   });
 
@@ -202,5 +217,26 @@ document.addEventListener('DOMContentLoaded', () => {
     statusEl.textContent = msg;
     statusEl.className = 'status ' + type;
     statusEl.style.display = 'block';
+  }
+
+  // Проверить API Яндекса с серверов GitHub нельзя (зарубежным IP он отвечает 451),
+  // поэтому о поломках узнаём от людей: форма открывается уже заполненной.
+  function showDownloadError(error) {
+    const message = error || 'Ошибка скачивания';
+    showStatus(message, 'error');
+    const params = new URLSearchParams({
+      template: 'bug_report.yml',
+      where: 'Расширение (браузер)',
+      version: 'v' + update.currentVersion(),
+      env: navigator.userAgent,
+      console: message.slice(0, 300),
+    });
+    const link = document.createElement('a');
+    link.className = 'status-report';
+    link.href = 'https://github.com/vladimir120307-droid/yandex-music-downloader/issues/new?' + params;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = 'Сообщить об ошибке';
+    statusEl.append(document.createElement('br'), link);
   }
 });

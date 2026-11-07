@@ -3,6 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Версия приходит из тега релиза: gradle assembleRelease -PappVersion=3.14.0
+// Локальная сборка получает 0.0.0, и проверка обновлений в ней отключена.
+val appVersion = (project.findProperty("appVersion") as String?) ?: "0.0.0"
+val appVersionParts = appVersion.split(".").map { it.toIntOrNull() ?: 0 } + listOf(0, 0, 0)
+
 android {
     namespace = "ru.ymd.downloader"
     compileSdk = 34
@@ -11,8 +16,8 @@ android {
         applicationId = "ru.ymd.downloader"
         minSdk = 24            // Android 7.0 — покрывает подавляющее большинство устройств
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = maxOf(1, appVersionParts[0] * 10000 + appVersionParts[1] * 100 + appVersionParts[2])
+        versionName = appVersion
     }
 
     // Ключ лежит прямо в репозитории: приложение раздаётся через GitHub, а не
@@ -45,7 +50,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }

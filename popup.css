@@ -64,6 +64,7 @@ body {
 
 .status.success { background: rgba(76, 175, 80, 0.1); color: #4caf50; border: 1px solid rgba(76, 175, 80, 0.2); }
 .status.error { background: rgba(244, 67, 54, 0.1); color: #f44336; border: 1px solid rgba(244, 67, 54, 0.2); }
+.status-report { display: inline-block; margin-top: 4px; color: #ffdb4d; }
 .status.info { background: rgba(255, 219, 77, 0.08); color: #ffdb4d; border: 1px solid rgba(255, 219, 77, 0.15); }
 
 .paste-section {
@@ -194,6 +195,8 @@ body {
 .muted { color: rgba(255,255,255,0.3); font-weight: 400; }
 
 .quality-select {
+  max-width: 165px;
+  text-overflow: ellipsis;
   appearance: none; -webkit-appearance: none;
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -339,5 +342,28 @@ body {
   color: rgba(255, 255, 255, 0.25);
   line-height: 1.5;
 }
+
+.footer a { color: rgba(255, 255, 255, 0.45); text-decoration: none; }
+.footer a:hover { color: #ffdb4d; }
+
+.update-banner {
+  margin-bottom: 12px; padding: 8px 10px;
+  border-radius: 8px; font-size: 12px;
+  background: rgba(255, 219, 77, 0.08); color: #ffdb4d;
+  border: 1px solid rgba(255, 219, 77, 0.25);
+}
+.update-row { display: flex; align-items: center; gap: 8px; }
+.update-row span { flex: 1; }
+.update-link {
+  padding: 3px 10px; border-radius: 6px;
+  background: #ffdb4d; color: #0d0d1a;
+  font-weight: 600; text-decoration: none;
+}
+.update-dismiss {
+  background: none; border: none; cursor: pointer;
+  color: rgba(255, 255, 255, 0.4); font-size: 16px; line-height: 1;
+}
+.update-dismiss:hover { color: #fff; }
+.update-hint { margin-top: 6px; font-size: 10px; line-height: 1.4; color: rgba(255, 255, 255, 0.5); }
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

@@ -10,7 +10,11 @@ importScripts(
   'services/yandex.js',
   'services/bandcamp.js',
   'services/soundcloud.js',
+  'lib/update.js',
 );
+
+// Раз в сутки смотрим, не вышла ли новая версия (сам браузер её не поставит)
+globalThis.YMD.update.check().catch(() => {});
 
 // ═══════════════════════════════════════
 // YANDEX AUDIO CAPTURE (webRequest)
@@ -79,7 +83,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       try {
         chrome.action.setBadgeText({ text: '✓' });
         chrome.action.setBadgeBackgroundColor({ color: '#4caf50' });
-        setTimeout(() => { try { chrome.action.setBadgeText({ text: '' }); } catch {} }, 6000);
+        setTimeout(() => {
+          try { chrome.action.setBadgeText({ text: '' }); } catch {}
+          globalThis.YMD.update.refreshBadge().catch(() => {});
+        }, 6000);
       } catch {}
       console.log('[YMD] auto-captured Yandex Music token from OAuth redirect');
     });

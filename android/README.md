@@ -36,7 +36,7 @@
 
 ```bash
 cd android
-gradle assembleRelease
+gradle assembleRelease -PappVersion=3.14.0
 ```
 
 Готовый файл: `app/build/outputs/apk/release/`.

@@ -60,6 +60,11 @@ class MainActivity : ComponentActivity() {
         var status by remember { mutableStateOf("Готов к работе") }
         var progress by remember { mutableStateOf(0f) }
         val log = remember { mutableStateListOf<String>() }
+        var update by remember { mutableStateOf<UpdateChecker.Update?>(null) }
+
+        LaunchedEffect(Unit) {
+            update = withContext(Dispatchers.IO) { UpdateChecker.check(BuildConfig.VERSION_NAME) }
+        }
 
         fun addLog(line: String) {
             log.add(line)
@@ -76,6 +81,15 @@ class MainActivity : ComponentActivity() {
             Text("Music Downloader", color = Yellow, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text("Яндекс.Музыка · FLAC / MP3 · обложка, теги, текст",
                 color = TextGrey, fontSize = 12.sp)
+
+            update?.let { u ->
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u.url))) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Yellow)
+                ) { Text("Вышла версия ${u.version} — скачать", color = Bg, fontWeight = FontWeight.Bold) }
+            }
 
             Spacer(Modifier.height(18.dp))
 
@@ -228,6 +242,11 @@ class MainActivity : ComponentActivity() {
             Spacer(Modifier.height(24.dp))
             Text("Файлы сохраняются в папку Музыка/MusicDownloader",
                 color = TextGrey, fontSize = 11.sp)
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = {
+                startActivity(Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/vladimir120307-droid/yandex-music-downloader")))
+            }) { Text("Версия ${BuildConfig.VERSION_NAME} · ⭐ GitHub", color = TextGrey, fontSize = 11.sp) }
         }
     }
 
