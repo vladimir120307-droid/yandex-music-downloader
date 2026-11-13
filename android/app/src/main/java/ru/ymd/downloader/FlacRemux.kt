@@ -1,6 +1,7 @@
 package ru.ymd.downloader
 
 import java.io.ByteArrayOutputStream
+import java.io.OutputStream
 
 /**
  * Переупаковка FLAC из MP4-контейнера в нативный .flac — без перекодирования.
@@ -60,11 +61,19 @@ object FlacRemux {
         return block
     }
 
+    /** Где в MP4 лежат аудиокадры: куски «смещение — длина», идущие подряд кадры склеены. */
+    class Plan(
+        internal val streamInfo: ByteArray,
+        internal val offsets: LongArray,
+        internal val lengths: IntArray,
+        internal val count: Int,
+    )
+
     /**
-     * Достаём кадры по таблицам. Брать mdat целиком нельзя: между чанками
+     * Находим кадры по таблицам. Брать mdat целиком нельзя: между чанками
      * встречается выравнивание, из-за которого декодер спотыкается.
      */
-    private fun extractFrames(b: ByteArray): ByteArray? {
+    private fun frameRanges(b: ByteArray, streamInfo: ByteArray): Plan? {
         val stszI = findSig(b, "stsz")
         if (stszI < 0) return null
         var ds = stszI + 4 + 4
@@ -128,8 +137,9 @@ object FlacRemux {
         for (s in sizes) total += s
         if (total <= 0 || total > Int.MAX_VALUE) return null
 
-        val frames = ByteArray(total.toInt())
-        var fp = 0
+        val offsets = LongArray(count)
+        val lengths = IntArray(count)
+        var n = 0
         var sampleIdx = 0
         for (c in 1..ccount) {
             var off = chunkOffsets[c - 1]
@@ -138,14 +148,19 @@ object FlacRemux {
             while (k < spc && sampleIdx < count) {
                 val sz = sizes[sampleIdx]
                 if (off < 0 || off + sz > b.size) return null
-                System.arraycopy(b, off.toInt(), frames, fp, sz)
-                fp += sz
+                if (n > 0 && offsets[n - 1] + lengths[n - 1] == off) {
+                    lengths[n - 1] += sz
+                } else {
+                    offsets[n] = off
+                    lengths[n] = sz
+                    n++
+                }
                 off += sz
                 sampleIdx++
                 k++
             }
         }
-        return if (fp == frames.size) frames else frames.copyOf(fp)
+        return Plan(streamInfo, offsets, lengths, n)
     }
 
     private fun be32(n: Int): ByteArray = byteArrayOf(
@@ -205,17 +220,25 @@ object FlacRemux {
         )
 
     /**
-     * Собирает нативный FLAC из MP4. Бросает NotFlacMp4, если внутри не FLAC —
-     * вызывающий код тогда просто сохраняет исходный файл как .m4a.
+     * Проверяет, что внутри FLAC, и находит кадры. Бросает NotFlacMp4 до того,
+     * как что-то записано, — вызывающий код тогда сохраняет исходный файл как .m4a.
      */
-    fun remux(mp4: ByteArray, track: Track, cover: ByteArray?): ByteArray {
+    fun plan(mp4: ByteArray): Plan {
         val streamInfo = extractStreamInfo(mp4)
             ?: throw NotFlacMp4("В контейнере нет FLAC (бокс dfLa не найден)")
-        val frames = extractFrames(mp4)
+        val plan = frameRanges(mp4, streamInfo)
             ?: throw NotFlacMp4("Не удалось извлечь аудиокадры")
-        if (frames.isEmpty()) throw NotFlacMp4("Аудиокадры пустые")
+        if (plan.count == 0) throw NotFlacMp4("Аудиокадры пустые")
+        return plan
+    }
 
-        val si = streamInfo.copyOf()
+    /**
+     * Пишет нативный FLAC сразу в out. Кадры не собираются в отдельный массив:
+     * раньше здесь появлялись ещё три копии трека, и длинные FLAC роняли
+     * приложение посреди плейлиста (issue #76).
+     */
+    fun write(mp4: ByteArray, plan: Plan, track: Track, cover: ByteArray?, out: OutputStream) {
+        val si = plan.streamInfo.copyOf()
         si[0] = (si[0].toInt() and 0x7f).toByte()   // снимаем флаг «последний блок»
 
         val blocks = mutableListOf<Pair<Int, ByteArray>>()   // тип к содержимому
@@ -225,14 +248,14 @@ object FlacRemux {
             blocks.add(6 to pictureBlock(cover, "image/jpeg"))
         }
 
-        val out = ByteArrayOutputStream(frames.size + 64 * 1024)
         out.write("fLaC".toByteArray(Charsets.US_ASCII))
         for ((i, blk) in blocks.withIndex()) {
             val isLast = i == blocks.size - 1
             out.write(metaBlockHeader(blk.first, blk.second.size, isLast))
             out.write(blk.second)
         }
-        out.write(frames)
-        return out.toByteArray()
+        for (i in 0 until plan.count) {
+            out.write(mp4, plan.offsets[i].toInt(), plan.lengths[i])
+        }
     }
 }
