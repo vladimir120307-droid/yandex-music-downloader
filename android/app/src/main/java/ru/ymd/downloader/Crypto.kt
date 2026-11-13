@@ -42,16 +42,31 @@ object Crypto {
     }
 
     /**
-     * Расшифровка аудиопотока: AES-CTR с нулевым nonce.
+     * Расшифровка аудиопотока на месте: AES-CTR с нулевым nonce.
      * Ключ приходит от API в hex. Счётчик — 16 нулевых байт.
+     *
+     * На месте — чтобы не держать вторую копию трека (issue #76). Выход CTR
+     * никогда не обгоняет вход, поэтому ещё не прочитанные байты не затираются.
      */
-    fun decryptAesCtr(data: ByteArray, hexKey: String): ByteArray {
+    fun decryptAesCtrInPlace(data: ByteArray, hexKey: String) {
         val key = ByteArray(hexKey.length / 2) {
             ((Character.digit(hexKey[it * 2], 16) shl 4) or
                     Character.digit(hexKey[it * 2 + 1], 16)).toByte()
         }
         val cipher = Cipher.getInstance("AES/CTR/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(ByteArray(16)))
-        return cipher.doFinal(data)
+        val chunk = 64 * 1024
+        val buf = ByteArray(chunk + 16)
+        var inOff = 0
+        var outOff = 0
+        while (inOff < data.size) {
+            val len = minOf(chunk, data.size - inOff)
+            val n = cipher.update(data, inOff, len, buf, 0)
+            inOff += len
+            System.arraycopy(buf, 0, data, outOff, n)
+            outOff += n
+        }
+        val n = cipher.doFinal(buf, 0)
+        System.arraycopy(buf, 0, data, outOff, n)
     }
 }

@@ -74,7 +74,22 @@ object Http {
             val code = c.responseCode
             if (code !in 200..299) throw HttpError(code, "")
             val total = c.contentLengthLong
-            val out = ByteArrayOutputStream(if (total > 0) total.toInt() else 1 shl 20)
+            if (total in 1..Int.MAX_VALUE) {
+                // Сразу массив нужного размера: toByteArray() у ByteArrayOutputStream
+                // сделал бы вторую копию трека, а FLAC бывает по 40–60 МБ (issue #76)
+                val data = ByteArray(total.toInt())
+                var read = 0
+                c.inputStream.use { input ->
+                    while (read < data.size) {
+                        val n = input.read(data, read, minOf(64 * 1024, data.size - read))
+                        if (n < 0) break
+                        read += n
+                        onProgress?.invoke(read.toLong(), total)
+                    }
+                }
+                return if (read == data.size) data else data.copyOf(read)
+            }
+            val out = ByteArrayOutputStream(1 shl 20)
             val buf = ByteArray(64 * 1024)
             var read: Long = 0
             c.inputStream.use { input ->

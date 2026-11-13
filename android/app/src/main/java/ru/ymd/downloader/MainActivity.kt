@@ -291,6 +291,10 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) {
                 failed++
                 onLog("✗ $label — ${e.message}")
+            } catch (e: OutOfMemoryError) {
+                // OutOfMemoryError — не Exception: без этого падало всё приложение
+                failed++
+                onLog("✗ $label — не хватило памяти телефона")
             }
             onProgress((index + 1).toFloat() / tracks.size)
         }
