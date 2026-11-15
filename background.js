@@ -465,6 +465,7 @@ async function downloadByUrl(rawUrl) {
   const wantLyrics = await new Promise(r => chrome.storage.local.get('yamLyrics', d => r(!!(d && d.yamLyrics))));
   const folder = service.name; // subfolder per service for batch downloads
   let downloaded = 0;
+  let lastError = '';
   const isBatch = tracks.length > 1;
 
   for (let i = 0; i < tracks.length; i++) {
@@ -513,14 +514,18 @@ async function downloadByUrl(rawUrl) {
         res = await chromeDownload(audioUrl, fullName, saveAs && !isBatch);
       }
       if (res.success) downloaded++;
-      else console.warn('[YMD] download failed:', res.error);
+      else { lastError = res.error || 'ошибка скачивания'; console.warn('[YMD] download failed:', res.error); }
     } catch (err) {
+      lastError = err.message || String(err);
       console.warn('[YMD] track failed:', err);
     }
     if (i < tracks.length - 1) await globalThis.YMD.utils.sleep(400);
   }
   pushProgress({ status: 'done', downloaded, total: tracks.length });
-  return { success: true, downloaded, total: tracks.length };
+  if (!downloaded) {
+    return { success: false, error: `Не скачан ни один трек из ${tracks.length}: ${lastError}` };
+  }
+  return { success: true, downloaded, total: tracks.length, error: lastError };
 }
 
 // ═══════════════════════════════════════

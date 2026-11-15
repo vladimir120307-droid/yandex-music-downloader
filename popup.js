@@ -126,7 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
       pasteBtn.disabled = false;
       pasteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:-2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Скачать';
       if (chrome.runtime.lastError) { showStatus('Ошибка: ' + chrome.runtime.lastError.message, 'error'); return; }
-      if (resp?.success) showStatus(`✓ Скачано ${resp.downloaded}/${resp.total}`, 'success');
+      if (resp?.success && resp.downloaded === resp.total) showStatus(`✓ Скачано ${resp.downloaded}/${resp.total}`, 'success');
+      else if (resp?.success) showDownloadError(`Скачано ${resp.downloaded}/${resp.total}. Остальные не получились: ${resp.error}`);
       else showDownloadError(resp?.error);
     });
   });
