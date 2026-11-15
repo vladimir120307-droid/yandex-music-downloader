@@ -222,6 +222,13 @@ const CI_TESTS = {
     assertEqual(url.searchParams.get('version'), 'v' + MANIFEST.version, 'версия в форме');
     assertEqual(url.searchParams.get('console'), 'api.music.yandex.net/tracks: HTTP 403', 'ошибка в форме');
 
+    // Часть треков не скачалась — это не «✓», а ошибка с причиной
+    await b.eval(`chrome.runtime.sendMessage = (m, cb) => {
+      if (m.action === 'pasteDownload') cb({ success: true, downloaded: 3, total: 5, error: 'HTTP 403' }); };
+      document.getElementById('paste-btn').click(); true`, sessionId);
+    const partial = await b.eval(`JSON.stringify([document.getElementById('status').className, document.getElementById('status').textContent])`, sessionId);
+    if (!partial.includes('error') || !partial.includes('3/5') || !partial.includes('HTTP 403')) throw new Error('частичный успех показан неверно: ' + partial);
+
     // «Вставьте ссылку» — не поломка, сообщать не о чем
     await b.eval(`document.getElementById('url-input').value = ''; document.getElementById('paste-btn').click(); true`, sessionId);
     assertEqual(await report(), '', 'ссылка при пустом поле');
@@ -255,6 +262,27 @@ const YANDEX_TESTS = {
     const n = await b.eval(`(async () => { const s = YMD.registry.get('yandex');
       return (await s.listTracks(s.parseUrl('https://music.yandex.ru/album/${ALBUM_ID}'))).length; })()`);
     if (!n) throw new Error('в альбоме нет треков');
+  },
+
+  async 'скачивание по ссылке качает MP3 (обсуждение #12, «Скачано 0/64»)'(b) {
+    // Токен не нужен: download-info отвечает и анонимно. Подставляем любой и
+    // убираем заголовок, чтобы пройти тот же путь, что у человека без Плюса.
+    const res = await b.eval(`(async () => {
+      const realFetch = fetch;
+      globalThis.fetch = (url, opts = {}) => {
+        if (String(url).includes('api.music.yandex.net') && opts.headers) {
+          const headers = { ...opts.headers };
+          delete headers.Authorization;
+          opts = { ...opts, headers };
+        }
+        return realFetch(url, opts);
+      };
+      await chrome.storage.local.set({ yamToken: 'test', yamQuality: 'mp3-320' });
+      return downloadByUrl('https://music.yandex.ru/album/${ALBUM_ID}/track/${TRACK_ID}');
+    })()`);
+    assertEqual([res.success, res.downloaded], [true, 1], `результат (${res.error || ''})`);
+    const files = await b.waitForFiles(1);
+    if (!/\.mp3$/.test(files[0] || '')) throw new Error('файл не сохранился: ' + JSON.stringify(files));
   },
 
   async 'ссылка на аудио: download-info отвечает как раньше'(b) {

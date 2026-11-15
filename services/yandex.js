@@ -354,13 +354,19 @@
     );
   }
 
-  async function resolveDownloadInfoUrl(downloadInfoUrl) {
-    // storage.mds.yandex.net не отдаёт CORS — fetch через background.
-    const sep = downloadInfoUrl.includes('?') ? '&' : '?';
-    const proxyUrl = downloadInfoUrl + sep + 'format=json';
-    const txt = await new Promise((resolve, reject) => {
+  // storage.mds.yandex.net не отдаёт CORS. Со страницы идём через background:
+  // у него host_permissions. А в самом background (скачивание по ссылке из
+  // попапа) — напрямую: сообщение самому себе он отправить не может, и
+  // каждый MP3-трек падал (обсуждение #12, «Скачано 0/64»).
+  async function fetchDownloadInfo(url) {
+    if (typeof ServiceWorkerGlobalScope !== 'undefined' && self instanceof ServiceWorkerGlobalScope) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }
+    return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
-        { action: 'corsProxyFetch', url: proxyUrl, headers: {} },
+        { action: 'corsProxyFetch', url, headers: {} },
         (resp) => {
           if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
           if (!resp || !resp.ok) return reject(new Error(resp?.error || 'corsProxyFetch failed'));
@@ -368,6 +374,11 @@
         }
       );
     });
+  }
+
+  async function resolveDownloadInfoUrl(downloadInfoUrl) {
+    const sep = downloadInfoUrl.includes('?') ? '&' : '?';
+    const txt = await fetchDownloadInfo(downloadInfoUrl + sep + 'format=json');
     let host, path, ts, s;
     try {
       const j = JSON.parse(txt);
